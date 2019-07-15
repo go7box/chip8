@@ -53,7 +53,7 @@ where
     T: InstructionParser,
 {
     pub fn new(name: &str, ins_parser: T) -> Self {
-        Machine {
+        Self {
             name: name.to_string(),
             counter: 512,
             stack_ptr: 0,
@@ -116,7 +116,7 @@ where
 
 /**
 * Create a 16-bit opcode out of 2 bytes
-* Ref: https://stackoverflow.com/a/50244328
+* Ref: <https://stackoverflow.com/a/50244328>
 * Shift the bits by 8 to the left:
     (XXXXXXXX becomes XXXXXXXX00000000)
 * THEN bitwise-OR to concatenate them:
