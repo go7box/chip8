@@ -1,4 +1,4 @@
-use crate::bitmasks::*;
+use crate::bitmasks::{mask_000F, mask_00F0, mask_00FF, mask_0F00, mask_0FFF};
 use crate::instructions::Instruction;
 
 #[allow(non_snake_case)]
