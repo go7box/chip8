@@ -1,10 +1,8 @@
-use std::convert::TryFrom;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
 
-use crate::opcodes::Instruction;
-use crate::opcodesv2::InstructionV2;
+use crate::instructions::{Instruction, InstructionParser};
 
 const MEMORY_SIZE: usize = 4096;
 const STACK_SIZE: usize = 16;
@@ -28,7 +26,7 @@ impl fmt::Debug for Memory {
     }
 }
 
-pub struct Machine {
+pub struct Machine<T: InstructionParser> {
     name: String,
     counter: u16,
     stack_ptr: u8,
@@ -38,16 +36,23 @@ pub struct Machine {
     i: u16,                  // "There is also a 16-bit register called I."
     delay_register: u8,
     sound_register: u8,
+    instruction_parser: T,
 }
 
-impl fmt::Debug for Machine {
+impl<T> fmt::Debug for Machine<T>
+where
+    T: InstructionParser,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {}, \n\tMem: {:?} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register, self.mem)
     }
 }
 
-impl Machine {
-    pub fn new(name: &str) -> Self {
+impl<T> Machine<T>
+where
+    T: InstructionParser,
+{
+    pub fn new(name: &str, ins_parser: T) -> Self {
         Machine {
             name: name.to_string(),
             counter: 512,
@@ -60,6 +65,7 @@ impl Machine {
             i: 0,
             delay_register: 0,
             sound_register: 0,
+            instruction_parser: ins_parser,
         }
     }
 
@@ -90,45 +96,49 @@ impl Machine {
             }
             let opcode = {
                 let pc: usize = usize::from(self.counter);
-                Machine::get_opcode(&self.mem.mem[pc..=pc + 1])
+                get_opcode(&self.mem.mem[pc..=pc + 1])
             };
             if opcode != 0 {
                 trace!("PC: {}, opcode = {:X}", self.counter, opcode);
             }
-            let instruction = InstructionV2::try_from(opcode).expect("Could not parse opcode");
+            let instruction = self
+                .instruction_parser
+                .try_from(opcode)
+                .expect("Could not parse opcode");
             trace!("Instruction: {:X?}", instruction);
-            if let InstructionV2::Return = instruction {
+            if let Instruction::Return = instruction {
                 return Ok(());
             };
             self.counter += 2;
         }
     }
+}
 
-    /**
-    * Create a 16-bit opcode out of 2 bytes
-    * Ref: https://stackoverflow.com/a/50244328
-    * Shift the bits by 8 to the left:
-        (XXXXXXXX becomes XXXXXXXX00000000)
-    * THEN bitwise-OR to concatenate them:
-    *   (XXXXXXXX00000000 | YYYYYYYY) = XXXXXXXXYYYYYYYY
-    **/
-    fn get_opcode(b: &[u8]) -> u16 {
-        let mut fb = u16::from(b[0]);
-        let sb = u16::from(b[1]);
-        fb <<= 8;
-        fb | sb
-    }
+/**
+* Create a 16-bit opcode out of 2 bytes
+* Ref: https://stackoverflow.com/a/50244328
+* Shift the bits by 8 to the left:
+    (XXXXXXXX becomes XXXXXXXX00000000)
+* THEN bitwise-OR to concatenate them:
+*   (XXXXXXXX00000000 | YYYYYYYY) = XXXXXXXXYYYYYYYY
+**/
+fn get_opcode(b: &[u8]) -> u16 {
+    let mut fb = u16::from(b[0]);
+    let sb = u16::from(b[1]);
+    fb <<= 8;
+    fb | sb
 }
 
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
 mod tests {
     use super::*;
+    use crate::opcodesv2::OpcodeTable;
 
     #[test]
     fn test_copy_into_mem_no_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM");
+        let mut vm = Machine::new("TestVM", OpcodeTable {});
         vm._copy_into_mem(&mut tmpfile).unwrap();
         assert_eq!(vm.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
@@ -140,7 +150,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_some_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM");
+        let mut vm = Machine::new("TestVM", OpcodeTable {});
         write!(tmpfile, "Hello World!").unwrap(); // Write
         tmpfile.seek(SeekFrom::Start(0)).unwrap(); // Seek to start
         vm._copy_into_mem(&mut tmpfile).unwrap();
@@ -154,12 +164,12 @@ mod tests {
 
     #[test]
     fn test_create_opcode() {
-        assert_eq!(Machine::get_opcode(&[0x31, 0x42]), 0x3142);
-        assert_eq!(Machine::get_opcode(&[0x1, 0x2]), 0x0102);
-        assert_eq!(Machine::get_opcode(&[0xAB, 0x9C]), 0xAB9C);
+        assert_eq!(get_opcode(&[0x31, 0x42]), 0x3142);
+        assert_eq!(get_opcode(&[0x1, 0x2]), 0x0102);
+        assert_eq!(get_opcode(&[0xAB, 0x9C]), 0xAB9C);
 
         // doesn't magically append or prepend zeroes to the final output
-        assert_ne!(Machine::get_opcode(&[0x1, 0x2]), 0x1200);
-        assert_ne!(Machine::get_opcode(&[0x1, 0x2]), 0x0012);
+        assert_ne!(get_opcode(&[0x1, 0x2]), 0x1200);
+        assert_ne!(get_opcode(&[0x1, 0x2]), 0x0012);
     }
 }
