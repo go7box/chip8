@@ -87,6 +87,20 @@ where
         Ok(())
     }
 
+    /**
+    * Create a 16-bit opcode out of 2 bytes
+    * Ref: <https://stackoverflow.com/a/50244328>
+    * Shift the bits by 8 to the left:
+        (XXXXXXXX becomes XXXXXXXX00000000)
+    * THEN bitwise-OR to concatenate them:
+    *   (XXXXXXXX00000000 | YYYYYYYY) = XXXXXXXXYYYYYYYY
+    **/
+    fn get_opcode(b: &[u8]) -> u16 {
+        let mut fb = u16::from(b[0]);
+        let sb = u16::from(b[1]);
+        fb <<= 8;
+        fb | sb
+    }
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), std::io::Error> {
         loop {
@@ -96,7 +110,7 @@ where
             }
             let opcode = {
                 let pc: usize = usize::from(self.counter);
-                get_opcode(&self.mem.mem[pc..=pc + 1])
+                Self::get_opcode(&self.mem.mem[pc..=pc + 1])
             };
             if opcode != 0 {
                 trace!("PC: {}, opcode = {:X}", self.counter, opcode);
@@ -112,21 +126,6 @@ where
             self.counter += 2;
         }
     }
-}
-
-/**
-* Create a 16-bit opcode out of 2 bytes
-* Ref: <https://stackoverflow.com/a/50244328>
-* Shift the bits by 8 to the left:
-    (XXXXXXXX becomes XXXXXXXX00000000)
-* THEN bitwise-OR to concatenate them:
-*   (XXXXXXXX00000000 | YYYYYYYY) = XXXXXXXXYYYYYYYY
-**/
-fn get_opcode(b: &[u8]) -> u16 {
-    let mut fb = u16::from(b[0]);
-    let sb = u16::from(b[1]);
-    fb <<= 8;
-    fb | sb
 }
 
 #[cfg(test)]
@@ -164,12 +163,12 @@ mod tests {
 
     #[test]
     fn test_create_opcode() {
-        assert_eq!(get_opcode(&[0x31, 0x42]), 0x3142);
-        assert_eq!(get_opcode(&[0x1, 0x2]), 0x0102);
-        assert_eq!(get_opcode(&[0xAB, 0x9C]), 0xAB9C);
+        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0x31, 0x42]), 0x3142);
+        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x0102);
+        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0xAB, 0x9C]), 0xAB9C);
 
         // doesn't magically append or prepend zeroes to the final output
-        assert_ne!(get_opcode(&[0x1, 0x2]), 0x1200);
-        assert_ne!(get_opcode(&[0x1, 0x2]), 0x0012);
+        assert_ne!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x1200);
+        assert_ne!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x0012);
     }
 }
