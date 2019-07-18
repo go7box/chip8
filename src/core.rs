@@ -101,6 +101,7 @@ where
         fb <<= 8;
         fb | sb
     }
+
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), std::io::Error> {
         loop {
@@ -130,6 +131,8 @@ where
 
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
+use std::thread::JoinHandle;
+
 mod tests {
     use super::*;
     use crate::opcodesv2::OpcodeTable;
