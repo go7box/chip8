@@ -45,5 +45,9 @@ fn main() {
         .expect("Unable to load ROM from file");
     debug!("{:#?}", vm);
     let handle = launch_thread(vm);
-    handle.join().expect("VM thread failed to launch");
+    if let Ok(_) = handle.join() {
+        info!("Shutting down...");
+    } else {
+        error!("VM thread failed to launch!");
+    }
 }

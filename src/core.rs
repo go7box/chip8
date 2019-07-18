@@ -131,7 +131,6 @@ where
 
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
-use std::thread::JoinHandle;
 
 mod tests {
     use super::*;
