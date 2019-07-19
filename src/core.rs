@@ -112,20 +112,24 @@ where
         self.counter += 2;
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn add(&mut self, d1: u8, d2: u8) -> u8 {
         let res: u16 = u16::from(d1) + u16::from(d2);
-        self.v[FLAG_REGISTER] = match res > u16::from(u8::max_value()) {
-            true => 1,
-            false => 0,
+        self.v[FLAG_REGISTER] = if res > u16::from(u8::max_value()) {
+            1
+        } else {
+            0
         };
         res as u8
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn add_16(&mut self, d1: u16, d2: u16) -> u16 {
         let res: u32 = u32::from(d1) + u32::from(d2);
-        self.v[FLAG_REGISTER] = match res > u32::from(u16::max_value()) {
-            true => 1,
-            false => 0,
+        self.v[FLAG_REGISTER] = if res > u32::from(u16::max_value()) {
+            1
+        } else {
+            0
         };
         res as u16
     }
