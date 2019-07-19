@@ -47,7 +47,7 @@ where
     T: InstructionParser,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register)
+        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {}, \n\tSKIP: {} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register, self.skip_increment)
     }
 }
 
@@ -244,8 +244,8 @@ where
             self.execute(&instruction);
             if !self.skip_increment {
                 self.inc_pc();
-                self.skip_increment = false;
             }
+            self.skip_increment = false;
         }
     }
 }
