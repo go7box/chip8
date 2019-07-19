@@ -1,6 +1,7 @@
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
+use rand::Rng;
 
 use crate::instructions::{Instruction, InstructionParser};
 
@@ -117,6 +118,10 @@ where
             }
             Instruction::LoadImmediate(address) => {
                 self.i = address;
+            }
+            Instruction::Random(register, data) => {
+                let random_byte= rand::thread_rng().gen_range(0, 255);
+                self.v[usize::from(register)] = random_byte & data;
             }
             Instruction::LoadFromDelay(register) => {
                 self.v[usize::from(register)] = self.delay_register;
