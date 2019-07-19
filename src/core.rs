@@ -38,6 +38,7 @@ pub struct Machine<T: InstructionParser> {
     delay_register: u8,
     sound_register: u8,
     instruction_parser: T,
+    skip_increment: bool,
 }
 
 impl<T> fmt::Debug for Machine<T>
@@ -67,6 +68,7 @@ where
             delay_register: 0,
             sound_register: 0,
             instruction_parser: ins_parser,
+            skip_increment: false,
         }
     }
 
@@ -105,16 +107,64 @@ where
         fb | sb
     }
 
+    fn inc_pc(&mut self) {
+        self.counter += 2;
+    }
+
     fn execute(&mut self, ins: &Instruction) {
         match *ins {
             Instruction::ClearScreen => {}
+            Instruction::Return => {
+                self.counter = self.stack[usize::from(self.stack_ptr)];
+                self.stack_ptr -= 1;
+                self.skip_increment = true;
+            }
+            Instruction::SYS => {}
+            Instruction::Jump(address) => {
+                self.counter = address;
+                self.skip_increment = true;
+            }
+            Instruction::Call(address) => {
+                self.stack_ptr += 1;
+                self.stack[usize::from(self.stack_ptr)] = self.counter;
+                self.counter = address;
+                self.skip_increment = true;
+            }
+            Instruction::SkipEqualsByte(reg, byte) => {
+                if self.v[usize::from(reg)] == byte {
+                    self.inc_pc();
+                }
+            }
             Instruction::SkipNotEqualsByte(reg, byte) => {
                 if self.v[usize::from(reg)] != byte {
-                    self.counter += 2;
+                    self.inc_pc();
+                }
+            }
+            Instruction::SkipEqualsRegister(reg1, reg2) => {
+                if self.v[usize::from(reg1)] == self.v[usize::from(reg2)] {
+                    self.inc_pc();
                 }
             }
             Instruction::LoadByte(reg, byte) => {
                 self.v[usize::from(reg)] = byte;
+            }
+            Instruction::AddByte(reg, byte) => {
+                self.v[usize::from(reg)] += byte;
+            }
+            Instruction::LoadRegister(reg1, reg2) => {
+                self.v[usize::from(reg1)] = self.v[usize::from(reg2)];
+            }
+            Instruction::Or(reg1, reg2) => {
+                self.v[usize::from(reg1)] |= self.v[usize::from(reg2)];
+            }
+            Instruction::And(reg1, reg2) => {
+                self.v[usize::from(reg1)] &= self.v[usize::from(reg2)];
+            }
+            Instruction::Xor(reg1, reg2) => {
+                self.v[usize::from(reg1)] ^= self.v[usize::from(reg2)];
+            }
+            Instruction::AddRegister(reg1, reg2) => {
+                self.v[usize::from(reg1)] += self.v[usize::from(reg2)];
             }
             Instruction::LoadImmediate(address) => {
                 self.i = address;
@@ -180,10 +230,10 @@ where
                 .expect("Could not parse opcode");
             trace!("Instruction: {:X?}", instruction);
             self.execute(&instruction);
-            if let Instruction::Return = instruction {
-                return Ok(());
-            };
-            self.counter += 2;
+            if !self.skip_increment {
+                self.inc_pc();
+                self.skip_increment = false;
+            }
         }
     }
 }
