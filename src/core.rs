@@ -114,12 +114,20 @@ where
 
     fn add(&mut self, d1: u8, d2: u8) -> u8 {
         let res: u16 = u16::from(d1) + u16::from(d2);
-        if res > 255 {
-            self.v[FLAG_REGISTER] = 1;
-        } else {
-            self.v[FLAG_REGISTER] = 0;
-        }
-        (res & 0xFF) as u8
+        self.v[FLAG_REGISTER] = match res > u16::from(u8::max_value()) {
+            true => 1,
+            false => 0,
+        };
+        res as u8
+    }
+
+    fn add_16(&mut self, d1: u16, d2: u16) -> u16 {
+        let res: u32 = u32::from(d1) + u32::from(d2);
+        self.v[FLAG_REGISTER] = match res > u32::from(u16::max_value()) {
+            true => 1,
+            false => 0,
+        };
+        res as u16
     }
 
     fn execute(&mut self, ins: &Instruction) {
@@ -195,7 +203,7 @@ where
                 self.sound_register = register;
             }
             Instruction::AddI(register) => {
-                self.i = self.i + u16::from(self.v[usize::from(register)]); // TODO: Can this overflow?
+                self.i = self.add_16(self.i, u16::from(self.v[usize::from(register)]));
             }
             Instruction::LoadIBCD(register) => {
                 // Store BCD representation of Vx in memory locations I, I+1 and I+2.
