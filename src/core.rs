@@ -118,12 +118,37 @@ where
             Instruction::LoadImmediate(address) => {
                 self.i = address;
             }
+            Instruction::LoadFromDelay(register) => {
+                self.v[usize::from(register)] = self.delay_register;
+            }
+            Instruction::LoadDelay(register) => {
+                self.delay_register = register;
+            }
+            Instruction::LoadSound(register) => {
+                self.sound_register = register;
+            }
+            Instruction::AddI(register) => {
+                self.i = self.i + u16::from(register); // TODO: Can this overflow?
+            }
+            Instruction::LoadIBCD(register) => {
+                // Store BCD representation of Vx in memory locations I, I+1 and I+2.
+                self.mem.mem[usize::from(self.i)] = register / 100;
+                self.mem.mem[usize::from(self.i) + 1] = (register / 10) % 10;
+                self.mem.mem[usize::from(self.i) + 2] = register % 10;
+            }
             Instruction::StoreRegisters(register) => {
                 let register: usize = usize::from(register);
                 for n in 0..=register {
                     self.mem.mem[usize::from(self.i) + n] = self.v[n];
                 }
                 trace!("{:?}", self.mem);
+            }
+            Instruction::LoadRegisters(register) => {
+                let register: usize = usize::from(register);
+                for n in 0..=register {
+                    self.v[n] = self.mem.mem[usize::from(self.i) + n]
+                }
+                debug!("{:?}", self.mem);
             }
             _ => unimplemented!(),
         };
