@@ -112,6 +112,14 @@ where
         self.counter += 2;
     }
 
+    fn add(&mut self, d1: u8, d2: u8) -> u8 {
+        let res: u16 = u16::from(d1) + u16::from(d2);
+        if res > 255 {
+            self.v[FLAG_REGISTER] = 1;
+        }
+        (res & 0xFF) as u8
+    }
+
     fn execute(&mut self, ins: &Instruction) {
         match *ins {
             Instruction::ClearScreen => {}
@@ -150,11 +158,7 @@ where
                 self.v[usize::from(reg)] = byte;
             }
             Instruction::AddByte(reg, byte) => {
-                let res: u16 = u16::from(self.v[usize::from(reg)]) + u16::from(byte);
-                if res > 255 {
-                    self.v[FLAG_REGISTER] = 1;
-                }
-                self.v[usize::from(reg)] = (res & 0xFF) as u8;
+                self.v[usize::from(reg)] = self.add(self.v[usize::from(reg)], byte);
             }
             Instruction::LoadRegister(reg1, reg2) => {
                 self.v[usize::from(reg1)] = self.v[usize::from(reg2)];
