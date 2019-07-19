@@ -193,7 +193,7 @@ where
                 self.sound_register = register;
             }
             Instruction::AddI(register) => {
-                self.i = self.i + u16::from(register); // TODO: Can this overflow?
+                self.i = self.i + u16::from(self.v[usize::from(register)]); // TODO: Can this overflow?
             }
             Instruction::LoadIBCD(register) => {
                 // Store BCD representation of Vx in memory locations I, I+1 and I+2.
