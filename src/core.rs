@@ -9,7 +9,7 @@ const MEMORY_SIZE: usize = 4096;
 const STACK_SIZE: usize = 16;
 const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
-const FLAG_REGISTER: usize = 16;
+const FLAG_REGISTER: usize = 15;
 
 struct Memory {
     mem: [u8; MEMORY_SIZE],
