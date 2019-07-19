@@ -264,6 +264,7 @@ where
 
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
+
 mod tests {
     use super::*;
     use crate::opcodesv2::OpcodeTable;
