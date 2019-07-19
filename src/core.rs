@@ -102,11 +102,11 @@ where
         fb | sb
     }
     // Start the virtual machine: This is the fun part!
-    pub fn start(&mut self) -> Result<(), std::io::Error> {
+    pub fn start(&mut self) -> Result<(), String> {
         loop {
             // we check for 4095 because we need to read 2 bytes.
             if self.counter > 4095 {
-                panic!("Program Counter Out of bounds!");
+                return Err(String::from("PC out of bounds"));
             }
             let opcode = {
                 let pc: usize = usize::from(self.counter);
