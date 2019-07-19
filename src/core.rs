@@ -44,7 +44,7 @@ where
     T: InstructionParser,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {}, \n\tMem: {:?} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register, self.mem)
+        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register)
     }
 }
 
@@ -71,7 +71,9 @@ where
 
     pub fn load_rom(&mut self, filename: &str) -> Result<(), std::io::Error> {
         let mut file = File::open(filename)?;
-        self._copy_into_mem(&mut file)
+        self._copy_into_mem(&mut file)?;
+        debug!("{:?}", self.mem);
+        Ok(())
     }
 
     fn _copy_into_mem(&mut self, file: &mut File) -> Result<(), std::io::Error> {
@@ -105,12 +107,27 @@ where
     fn execute(&mut self, ins: &Instruction) {
         match *ins {
             Instruction::ClearScreen => {}
+            Instruction::SkipNotEqualsByte(reg, byte) => {
+                if self.v[usize::from(reg)] != byte {
+                    self.counter += 2;
+                }
+            }
             Instruction::LoadByte(reg, byte) => {
                 self.v[usize::from(reg)] = byte;
-                trace!("Registers: {:?}", self.v);
+            }
+            Instruction::LoadImmediate(address) => {
+                self.i = address;
+            }
+            Instruction::StoreRegisters(register) => {
+                let register: usize = usize::from(register);
+                for n in 0..=register {
+                    self.mem.mem[usize::from(self.i) + n] = self.v[n];
+                }
+                trace!("{:?}", self.mem);
             }
             _ => unimplemented!(),
         };
+        trace!("{:?}", self);
     }
 
     // Start the virtual machine: This is the fun part!
