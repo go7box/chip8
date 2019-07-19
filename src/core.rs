@@ -101,6 +101,18 @@ where
         fb <<= 8;
         fb | sb
     }
+
+    fn execute(&mut self, ins: &Instruction) {
+        match *ins {
+            Instruction::ClearScreen => {}
+            Instruction::LoadByte(reg, byte) => {
+                self.v[usize::from(reg)] = byte;
+                trace!("Registers: {:?}", self.v);
+            }
+            _ => unimplemented!(),
+        };
+    }
+
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
         loop {
@@ -120,6 +132,7 @@ where
                 .try_from(opcode)
                 .expect("Could not parse opcode");
             trace!("Instruction: {:X?}", instruction);
+            self.execute(&instruction);
             if let Instruction::Return = instruction {
                 return Ok(());
             };
