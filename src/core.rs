@@ -116,6 +116,8 @@ where
         let res: u16 = u16::from(d1) + u16::from(d2);
         if res > 255 {
             self.v[FLAG_REGISTER] = 1;
+        } else {
+            self.v[FLAG_REGISTER] = 0;
         }
         (res & 0xFF) as u8
     }
