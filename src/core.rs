@@ -9,6 +9,7 @@ const MEMORY_SIZE: usize = 4096;
 const STACK_SIZE: usize = 16;
 const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
+const FLAG_REGISTER: usize = 16;
 
 struct Memory {
     mem: [u8; MEMORY_SIZE],
@@ -149,7 +150,11 @@ where
                 self.v[usize::from(reg)] = byte;
             }
             Instruction::AddByte(reg, byte) => {
-                self.v[usize::from(reg)] += byte;
+                let res: u16 = u16::from(self.v[usize::from(reg)]) + u16::from(byte);
+                if res > 255 {
+                    self.v[FLAG_REGISTER] = 1;
+                }
+                self.v[usize::from(reg)] = (res & 0xFF) as u8;
             }
             Instruction::LoadRegister(reg1, reg2) => {
                 self.v[usize::from(reg1)] = self.v[usize::from(reg2)];
