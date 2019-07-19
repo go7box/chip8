@@ -173,7 +173,8 @@ where
                 self.v[usize::from(reg1)] ^= self.v[usize::from(reg2)];
             }
             Instruction::AddRegister(reg1, reg2) => {
-                self.v[usize::from(reg1)] += self.v[usize::from(reg2)];
+                self.v[usize::from(reg1)] =
+                    self.add(self.v[usize::from(reg1)], self.v[usize::from(reg2)]);
             }
             Instruction::LoadImmediate(address) => {
                 self.i = address;
