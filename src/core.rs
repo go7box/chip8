@@ -234,6 +234,18 @@ where
         trace!("{:?}", self);
     }
 
+    // Resets the machine back to the original state
+    pub fn reset(&mut self) -> Result<(), String> {
+        self.counter = 512;
+        self.stack_ptr = 0;
+        self.mem.mem = [0; MEMORY_SIZE];
+        self.stack = [0; STACK_SIZE];
+        self.v = [0; REGISTER_COUNT];
+        self.i = 0;
+        self.delay_register = 0;
+        self.sound_register = 0;
+    }
+
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
         loop {
