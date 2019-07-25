@@ -244,6 +244,7 @@ where
         self.i = 0;
         self.delay_register = 0;
         self.sound_register = 0;
+        Ok(())
     }
 
     // Start the virtual machine: This is the fun part!
@@ -279,6 +280,7 @@ use std::io::{Seek, SeekFrom, Write};
 
 mod tests {
     use super::*;
+    use crate::opcodes::OpcodeMaskParser;
     use crate::opcodesv2::OpcodeTable;
 
     #[test]
@@ -317,5 +319,55 @@ mod tests {
         // doesn't magically append or prepend zeroes to the final output
         assert_ne!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x1200);
         assert_ne!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x0012);
+    }
+
+    #[test]
+    fn test_execute_cls() {
+        // The way we test execute is to pass in an instruction and then
+        // inspect the entire state of the machine for changes.
+        // TODO: We might need a reset method to go back to the original state
+        // Each instruction has a primary task and might also potentially have
+        // some side-effect. We need to test both
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        machine.execute(&Instruction::ClearScreen);
+        assert_eq!(machine.counter, 512);
+        assert_eq!(machine.stack_ptr, 0);
+
+        assert_eq!(machine.mem.mem.len(), 4096);
+        // every byte in memory is zero when file is empty
+        for byte in machine.mem.mem.iter() {
+            assert_eq!(*byte, 0);
+        }
+
+        assert_eq!(machine.stack, [0; STACK_SIZE]);
+        assert_eq!(machine.v, [0; REGISTER_COUNT]);
+        assert_eq!(machine.i, 0);
+        assert_eq!(machine.delay_register, 0);
+        assert_eq!(machine.sound_register, 0);
+    }
+
+    #[test]
+    fn test_execute_ret() {
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        // TODO: Should we artificially introduce modifications in the machine to test behaviour?
+        // TODO: Perhaps a fixture-like ROM which is read before each test run.
+        // Seems like it would be necessary otherwise a lot of behaviour can't be tested.
+        // Modify the counter and the stack pointer before the machine execution starts
+        machine.counter = 1;
+        machine.stack_ptr = 1;
+        machine.execute(&Instruction::Return);
+        assert_eq!(machine.counter, 0);
+        assert_eq!(machine.stack_ptr, 0);
+        assert_eq!(machine.skip_increment, true);
+        assert_eq!(machine.mem.mem.len(), 4096);
+        // every byte in memory is zero when file is empty
+        for byte in machine.mem.mem.iter() {
+            assert_eq!(*byte, 0);
+        }
+        assert_eq!(machine.stack, [0; STACK_SIZE]);
+        assert_eq!(machine.v, [0; REGISTER_COUNT]);
+        assert_eq!(machine.i, 0);
+        assert_eq!(machine.delay_register, 0);
+        assert_eq!(machine.sound_register, 0);
     }
 }

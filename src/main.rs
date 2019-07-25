@@ -4,10 +4,10 @@ extern crate env_logger;
 extern crate rand;
 
 use crate::instructions::InstructionParser;
-use std::env;
-use std::thread::JoinHandle;
 use std::convert::TryInto;
+use std::env;
 use std::ops::Deref;
+use std::thread::JoinHandle;
 
 mod bitmasks;
 mod core;
@@ -50,6 +50,6 @@ fn main() {
     let handle = launch_thread(vm);
     match handle.join() {
         Ok(_) => info!("Shutting down..."),
-        Err(e) => error!("VM thread exited with error {:?}", e)
+        Err(e) => error!("VM thread exited with error {:?}", e),
     }
 }
