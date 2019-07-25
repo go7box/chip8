@@ -370,4 +370,74 @@ mod tests {
         assert_eq!(machine.delay_register, 0);
         assert_eq!(machine.sound_register, 0);
     }
+
+    #[test]
+    fn test_execute_sys() {
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        machine.execute(&Instruction::SYS);
+        assert_eq!(machine.counter, 0);
+        assert_eq!(machine.stack_ptr, 0);
+        assert_eq!(machine.skip_increment, true);
+        assert_eq!(machine.mem.mem.len(), 4096);
+        // every byte in memory is zero when file is empty
+        for byte in machine.mem.mem.iter() {
+            assert_eq!(*byte, 0);
+        }
+        assert_eq!(machine.stack, [0; STACK_SIZE]);
+        assert_eq!(machine.v, [0; REGISTER_COUNT]);
+        assert_eq!(machine.i, 0);
+        assert_eq!(machine.delay_register, 0);
+        assert_eq!(machine.sound_register, 0);
+    }
+
+    #[test]
+    fn test_execute_jump() {
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+
+        assert_eq!(machine.counter, 512); // before machine executes instruction
+
+        machine.execute(&Instruction::Jump(0x0222));
+        assert_eq!(machine.counter, 0x0222);
+
+        machine.execute(&Instruction::Jump(4095));
+        assert_eq!(machine.counter, 4095);
+
+        assert_eq!(machine.stack_ptr, 0);
+        assert_eq!(machine.skip_increment, true);
+        assert_eq!(machine.mem.mem.len(), 4096);
+        // every byte in memory is zero when file is empty
+        for byte in machine.mem.mem.iter() {
+            assert_eq!(*byte, 0);
+        }
+        assert_eq!(machine.stack, [0; STACK_SIZE]);
+        assert_eq!(machine.v, [0; REGISTER_COUNT]);
+        assert_eq!(machine.i, 0);
+        assert_eq!(machine.delay_register, 0);
+        assert_eq!(machine.sound_register, 0);
+    }
+
+    #[test]
+    fn test_execute_call() {
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+
+        assert_eq!(machine.counter, 512); // before machine executes instruction
+        assert_eq!(machine.stack_ptr, 0);
+
+        machine.counter = 25;
+        machine.execute(&Instruction::Call(0x0222));
+        assert_eq!(machine.stack_ptr, 1);    // increments the stack pointer
+        assert_eq!(machine.counter, 0x0222); // pushes the current pc to the stack
+        assert_eq!(machine.skip_increment, true); // we're gonna skip the next automatic pc increment
+        assert_eq!(machine.stack[usize::from(machine.stack_ptr)], 25);  // stack has the old pc
+
+        assert_eq!(machine.mem.mem.len(), 4096);
+        // every byte in memory is zero when file is empty
+        for byte in machine.mem.mem.iter() {
+            assert_eq!(*byte, 0);
+        }
+        assert_eq!(machine.v, [0; REGISTER_COUNT]);
+        assert_eq!(machine.i, 0);
+        assert_eq!(machine.delay_register, 0);
+        assert_eq!(machine.sound_register, 0);
+    }
 }
