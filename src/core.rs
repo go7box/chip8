@@ -487,4 +487,28 @@ mod tests {
         assert_eq!(machine.delay_register, 0);
         assert_eq!(machine.sound_register, 0);
     }
+
+    #[test]
+    fn test_execute_se_reg() {
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+
+        assert_eq!(machine.counter, 512); // before machine executes instruction
+        machine.v[1] = 0x0001;
+        machine.v[12] = 0x0001;
+        machine.execute(&Instruction::SkipEqualsRegister(machine.v[1], machine.v[12]));
+        assert_eq!(machine.counter, 514);
+
+        machine.v[1] = 0x0002;
+        machine.execute(&Instruction::SkipEqualsRegister(machine.v[1], machine.v[12]));
+        assert_eq!(machine.counter, 514);
+
+        assert_eq!(machine.mem.mem.len(), 4096);
+        // every byte in memory is zero when file is empty
+        for byte in machine.mem.mem.iter() {
+            assert_eq!(*byte, 0);
+        }
+        assert_eq!(machine.i, 0);
+        assert_eq!(machine.delay_register, 0);
+        assert_eq!(machine.sound_register, 0);
+    }
 }
