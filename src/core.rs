@@ -495,11 +495,17 @@ mod tests {
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.v[1] = 0x0001;
         machine.v[12] = 0x0001;
-        machine.execute(&Instruction::SkipEqualsRegister(machine.v[1], machine.v[12]));
+        machine.execute(&Instruction::SkipEqualsRegister(
+            machine.v[1],
+            machine.v[12],
+        ));
         assert_eq!(machine.counter, 514);
 
         machine.v[1] = 0x0002;
-        machine.execute(&Instruction::SkipEqualsRegister(machine.v[1], machine.v[12]));
+        machine.execute(&Instruction::SkipEqualsRegister(
+            machine.v[1],
+            machine.v[12],
+        ));
         assert_eq!(machine.counter, 514);
 
         assert_eq!(machine.mem.mem.len(), 4096);
