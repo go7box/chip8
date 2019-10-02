@@ -38,7 +38,7 @@ impl fmt::Debug for Memory {
 impl fmt::Debug for GraphicsMemory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         const ZERO: u8 = 0;
-        write!(f, "[[ ")?;
+        write!(f, "[[ \n")?;
         for (i, row) in self.mem.iter().enumerate() {
             if row.len() != 0 {
                 write!(f, "{}:", i)?;
@@ -269,7 +269,6 @@ where
                 if h > 15 {
                     panic!("Sprite Height exceeded maximum limit!");
                 }
-
                 let vx = self.v[usize::from(reg_x)] as usize;
                 let vy = self.v[usize::from(reg_y)] as usize;
                 let height = h as usize;
@@ -307,6 +306,8 @@ where
                 if flipped {
                     self.v[0xF] = 1;
                 }
+                trace!("{:?}", self.graphics);
+                // TODO: Re-draw the screen here.
             }
             _ => unimplemented!(),
         };
@@ -595,5 +596,45 @@ mod tests {
         assert_eq!(machine.i, 0);
         assert_eq!(machine.delay_register, 0);
         assert_eq!(machine.sound_register, 0);
+    }
+
+    #[test]
+    fn test_execute_display_sprite() {
+        let _ = env_logger::init();
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+
+        // Set up the coordinate values (X, Y) in the V registers
+        machine.v[0x08] = 0x1c;     // 29..36 (8-bit wide)
+        machine.v[0x09] = 0x16;     // 22..28 (7-bit high)
+
+        // Fill the memory with lots of bits
+        for i in 0..3400 {
+            machine.mem.mem[i + 0x258] = 0xFF;
+        }
+
+        // VRAM is empty before the Display Instruction is executed
+        machine.i = 0x258;
+        for i in 0..32 {
+            for j in 0..64 {
+                assert_eq!(machine.graphics.mem[i][j], 0);
+            }
+        }
+
+        // Run the display instruction: D897 (Draw a sprite of 8x7 pixels, starting from (8, 9) on
+        // the GPU. The shape of the sprite is read from the memory, starting from location at register I.
+        // This is why before executing DXYN, we need to set the sprite in memory and point I to the location
+        // of the sprite.
+        machine.execute(&Instruction::DisplaySprite(0x8, 0x9, 7));
+
+        // Question: How do we know what the correct value of a sprite is?
+        // We use a simple sprite that just sets a rectangular block to 1
+        // and validate it.
+        // TODO: We also need to validate both X and Y overflow and the subsequent wraparound
+        for i in 22..28 {
+            for j in 29..36 {
+                assert_eq!(machine.graphics.mem[i][j], 1);
+            }
+        }
+
     }
 }
