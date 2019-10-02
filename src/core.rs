@@ -10,9 +10,16 @@ const STACK_SIZE: usize = 16;
 const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
+const DISPLAY_WIDTH: usize = 64;
+const DISPLAY_HEIGHT: usize = 32;
+const SPRITE_WIDTH: usize = 8;
 
 struct Memory {
     mem: [u8; MEMORY_SIZE],
+}
+
+struct GraphicsMemory {
+    mem: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
 }
 
 impl fmt::Debug for Memory {
@@ -28,11 +35,29 @@ impl fmt::Debug for Memory {
     }
 }
 
+impl fmt::Debug for GraphicsMemory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const ZERO: u8 = 0;
+        write!(f, "[[ ")?;
+        for (i, row) in self.mem.iter().enumerate() {
+            if row.len() != 0 {
+                write!(f, "{}:", i)?;
+                for (j, byte) in row.iter().enumerate() {
+                    write!(f, "{}", byte)?;
+                }
+                write!(f, "\n")?;
+            }
+        }
+        write!(f, "]]")
+    }
+}
+
 pub struct Machine<T: InstructionParser> {
     name: String,
     counter: u16,
     stack_ptr: u8,
     mem: Memory,
+    graphics: GraphicsMemory,
     stack: [u16; STACK_SIZE],
     v: [u8; REGISTER_COUNT], // registers: v0 to vf
     i: u16,                  // "There is also a 16-bit register called I."
@@ -62,6 +87,9 @@ where
             stack_ptr: 0,
             mem: Memory {
                 mem: [0; MEMORY_SIZE],
+            },
+            graphics: GraphicsMemory {
+                mem: [[0; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
             },
             stack: [0; STACK_SIZE],
             v: [0; REGISTER_COUNT],
@@ -228,6 +256,57 @@ where
                     self.v[n] = self.mem.mem[usize::from(self.i) + n]
                 }
                 debug!("{:?}", self.mem);
+            }
+            /**
+            Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels
+            and a height of N pixels.
+            Each row of 8 pixels is read as bit-coded starting from memory location I;
+            I value doesn’t change after the execution of this instruction.
+            As described above, VF is set to 1 if any screen pixels are flipped from set to unset
+            when the sprite is drawn, and to 0 if that doesn’t happen.
+            */
+            Instruction::DisplaySprite(reg_x, reg_y, h) => {
+                if h > 15 {
+                    panic!("Sprite Height exceeded maximum limit!");
+                }
+
+                let vx = self.v[usize::from(reg_x)] as usize;
+                let vy = self.v[usize::from(reg_y)] as usize;
+                let height = h as usize;
+                let mut flipped = false;
+
+                /**
+                We need to paint a maximum 8x15 sprite, following some rules
+
+                1. We use modulo width|height to wrap-around the sprites on the display grid
+
+                2. "Each row of 8 pixels is read as bit-coded starting from memory location I"
+                    - for this, we start at memory location I, and at each iteration,
+                    we get the bytes in memory. For each byte, we ensure we are collecting the corresponding
+                    position's bit-value (by shifting bits and then grabbing the LSB). Unsure if this is correct.
+
+                3. "VF is set to 1 if any screen pixels are flipped from set to unset"
+                    If a pixel was set already, and is now going to be unset, we set VF to 1.
+                    The only case of a pixel being set already and now being unset is when
+                    both the pixel and the graphics memory are both = 1 (since we XOR them).
+
+                4. Sprites are XORed onto the existing screen.
+                */
+                for row in 0..height {
+                    let y = (vy + row) % DISPLAY_HEIGHT;
+                    let px = self.mem.mem[usize::from(self.i) + row];
+                    for col in 0..SPRITE_WIDTH {
+                        let x = (vx + col) % DISPLAY_WIDTH;
+                        let bit = px >> (7 - col as u8) & 1;
+                        if bit == 1 && self.graphics.mem[y][x] == 1 {
+                            flipped |= true;
+                        }
+                        self.graphics.mem[y][x] ^= bit;
+                    }
+                }
+                if flipped {
+                    self.v[0xF] = 1;
+                }
             }
             _ => unimplemented!(),
         };
