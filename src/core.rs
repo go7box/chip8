@@ -37,15 +37,14 @@ impl fmt::Debug for Memory {
 
 impl fmt::Debug for GraphicsMemory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        const ZERO: u8 = 0;
-        write!(f, "[[ \n")?;
+        writeln!(f, "[[")?;
         for (i, row) in self.mem.iter().enumerate() {
-            if row.len() != 0 {
+            if !row.is_empty() {
                 write!(f, "{}:", i)?;
-                for (j, byte) in row.iter().enumerate() {
+                for (_, byte) in row.iter().enumerate() {
                     write!(f, "{}", byte)?;
                 }
-                write!(f, "\n")?;
+                writeln!(f)?;
             }
         }
         write!(f, "]]")
@@ -257,7 +256,7 @@ where
                 }
                 debug!("{:?}", self.mem);
             }
-            /**
+            /*
             Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels
             and a height of N pixels.
             Each row of 8 pixels is read as bit-coded starting from memory location I;
@@ -274,7 +273,7 @@ where
                 let height = h as usize;
                 let mut flipped = false;
 
-                /**
+                /*
                 We need to paint a maximum 8x15 sprite, following some rules
 
                 1. We use modulo width|height to wrap-around the sprites on the display grid
@@ -289,7 +288,7 @@ where
                     The only case of a pixel being set already and now being unset is when
                     both the pixel and the graphics memory are both = 1 (since we XOR them).
 
-                4. Sprites are XORed onto the existing screen.
+                4. Sprites are XORed onto the existing screen
                 */
                 for row in 0..height {
                     let y = (vy + row) % DISPLAY_HEIGHT;
@@ -315,7 +314,7 @@ where
     }
 
     // Resets the machine back to the original state
-    pub fn reset(&mut self) -> Result<(), String> {
+    pub fn _reset(&mut self) -> Result<(), String> {
         self.counter = 512;
         self.stack_ptr = 0;
         self.mem.mem = [0; MEMORY_SIZE];
@@ -361,12 +360,11 @@ use std::io::{Seek, SeekFrom, Write};
 mod tests {
     use super::*;
     use crate::opcodes::OpcodeMaskParser;
-    use crate::opcodesv2::OpcodeTable;
 
     #[test]
     fn test_copy_into_mem_no_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeTable {});
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser{});
         vm._copy_into_mem(&mut tmpfile).unwrap();
         assert_eq!(vm.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
@@ -378,7 +376,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_some_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeTable {});
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser{});
         write!(tmpfile, "Hello World!").unwrap(); // Write
         tmpfile.seek(SeekFrom::Start(0)).unwrap(); // Seek to start
         vm._copy_into_mem(&mut tmpfile).unwrap();
@@ -392,13 +390,13 @@ mod tests {
 
     #[test]
     fn test_create_opcode() {
-        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0x31, 0x42]), 0x3142);
-        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x0102);
-        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0xAB, 0x9C]), 0xAB9C);
+        assert_eq!(Machine::<OpcodeMaskParser>::get_opcode(&[0x31, 0x42]), 0x3142);
+        assert_eq!(Machine::<OpcodeMaskParser>::get_opcode(&[0x1, 0x2]), 0x0102);
+        assert_eq!(Machine::<OpcodeMaskParser>::get_opcode(&[0xAB, 0x9C]), 0xAB9C);
 
         // doesn't magically append or prepend zeroes to the final output
-        assert_ne!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x1200);
-        assert_ne!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x0012);
+        assert_ne!(Machine::<OpcodeMaskParser>::get_opcode(&[0x1, 0x2]), 0x1200);
+        assert_ne!(Machine::<OpcodeMaskParser>::get_opcode(&[0x1, 0x2]), 0x0012);
     }
 
     #[test]

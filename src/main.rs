@@ -4,17 +4,14 @@ extern crate env_logger;
 extern crate rand;
 
 use crate::instructions::InstructionParser;
-use std::convert::TryInto;
 use std::env;
-use std::ops::Deref;
-use std::thread::JoinHandle;
 
 mod bitmasks;
 mod core;
 mod instructions;
 mod opcodes;
-mod opcodesv2;
-mod ophandlers;
+// mod opcodesv2;
+// mod ophandlers;
 
 fn main() {
     env_logger::init();
@@ -24,5 +21,5 @@ fn main() {
     vm.load_rom(&rom_file)
         .expect("Unable to load ROM from file");
     debug!("{:#?}", vm);
-    vm.start();
+    vm.start().unwrap();
 }
