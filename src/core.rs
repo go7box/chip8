@@ -2,6 +2,7 @@ use rand::Rng;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
+use std::time::{Duration, Instant};
 
 use crate::instructions::{Instruction, InstructionParser};
 
@@ -13,6 +14,8 @@ const FLAG_REGISTER: usize = 15;
 const DISPLAY_WIDTH: usize = 64;
 const DISPLAY_HEIGHT: usize = 32;
 const SPRITE_WIDTH: usize = 8;
+const CLOCK_SPEED: u64 = 500; // 500 Hz
+const TIMER_FREQ: u64 = 60; // 60 Hz
 
 struct Memory {
     mem: [u8; MEMORY_SIZE],
@@ -64,6 +67,10 @@ pub struct Machine<T: InstructionParser> {
     sound_register: u8,
     instruction_parser: T,
     skip_increment: bool,
+    instruction_delay: Duration,
+    timer_delay: Duration,
+    delay_last: Instant,
+    sound_last: Instant,
 }
 
 impl<T> fmt::Debug for Machine<T>
@@ -95,8 +102,12 @@ where
             i: 0,
             delay_register: 0,
             sound_register: 0,
+            sound_last: Instant::now(),
+            delay_last: Instant::now(),
             instruction_parser: ins_parser,
             skip_increment: false,
+            instruction_delay: Duration::from_millis(1_000 / CLOCK_SPEED),
+            timer_delay: Duration::from_millis(1_000 / TIMER_FREQ),
         }
     }
 
@@ -347,7 +358,25 @@ where
             .expect("Could not parse opcode")
     }
 
-    fn handle_timers(&self) {}
+    fn handle_timers(&mut self) {
+        let current_time = Instant::now();
+
+        if self.sound_register > 0 {
+            trace!("BEEEP!!!");
+            if self.sound_last.elapsed() >= self.timer_delay {
+                self.sound_register -= 1;
+                self.sound_last = current_time;
+            }
+        }
+
+        if self.delay_register > 0 {
+            if self.delay_last.elapsed() >= self.timer_delay {
+                self.delay_register -= 1;
+                self.delay_last = current_time;
+            }
+        }
+        ::std::thread::sleep(self.instruction_delay);
+    }
 
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
