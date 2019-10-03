@@ -314,7 +314,7 @@ where
     }
 
     // Resets the machine back to the original state
-    pub fn _reset(&mut self) -> Result<(), String> {
+    pub fn reset(&mut self) -> Result<(), String> {
         self.counter = 512;
         self.stack_ptr = 0;
         self.mem.mem = [0; MEMORY_SIZE];
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_no_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeMaskParser{});
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser {});
         vm._copy_into_mem(&mut tmpfile).unwrap();
         assert_eq!(vm.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_some_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeMaskParser{});
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser {});
         write!(tmpfile, "Hello World!").unwrap(); // Write
         tmpfile.seek(SeekFrom::Start(0)).unwrap(); // Seek to start
         vm._copy_into_mem(&mut tmpfile).unwrap();
@@ -390,9 +390,15 @@ mod tests {
 
     #[test]
     fn test_create_opcode() {
-        assert_eq!(Machine::<OpcodeMaskParser>::get_opcode(&[0x31, 0x42]), 0x3142);
+        assert_eq!(
+            Machine::<OpcodeMaskParser>::get_opcode(&[0x31, 0x42]),
+            0x3142
+        );
         assert_eq!(Machine::<OpcodeMaskParser>::get_opcode(&[0x1, 0x2]), 0x0102);
-        assert_eq!(Machine::<OpcodeMaskParser>::get_opcode(&[0xAB, 0x9C]), 0xAB9C);
+        assert_eq!(
+            Machine::<OpcodeMaskParser>::get_opcode(&[0xAB, 0x9C]),
+            0xAB9C
+        );
 
         // doesn't magically append or prepend zeroes to the final output
         assert_ne!(Machine::<OpcodeMaskParser>::get_opcode(&[0x1, 0x2]), 0x1200);
@@ -602,8 +608,8 @@ mod tests {
         let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
 
         // Set up the coordinate values (X, Y) in the V registers
-        machine.v[0x08] = 0x1c;     // 29..36 (8-bit wide)
-        machine.v[0x09] = 0x16;     // 22..28 (7-bit high)
+        machine.v[0x08] = 0x1c; // 29..36 (8-bit wide)
+        machine.v[0x09] = 0x16; // 22..28 (7-bit high)
 
         // Fill the memory with lots of bits
         for i in 0..3400 {
@@ -633,6 +639,5 @@ mod tests {
                 assert_eq!(machine.graphics.mem[i][j], 1);
             }
         }
-
     }
 }
