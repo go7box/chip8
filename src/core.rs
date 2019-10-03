@@ -11,18 +11,19 @@ const STACK_SIZE: usize = 16;
 const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
-const DISPLAY_WIDTH: usize = 64;
-const DISPLAY_HEIGHT: usize = 32;
 const SPRITE_WIDTH: usize = 8;
 const CLOCK_SPEED: u64 = 500; // 500 Hz
 const TIMER_FREQ: u64 = 60; // 60 Hz
+
+pub const DISPLAY_WIDTH: usize = 64;
+pub const DISPLAY_HEIGHT: usize = 32;
 
 struct Memory {
     mem: [u8; MEMORY_SIZE],
 }
 
-struct GraphicsMemory {
-    mem: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
+pub struct GraphicsMemory {
+    pub mem: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
 }
 
 impl fmt::Debug for Memory {
@@ -60,6 +61,7 @@ pub struct Machine<T: InstructionParser> {
     stack_ptr: u8,
     mem: Memory,
     graphics: GraphicsMemory,
+    display: Option<VideoDisplay>,
     stack: [u16; STACK_SIZE],
     v: [u8; REGISTER_COUNT], // registers: v0 to vf
     i: u16,                  // "There is also a 16-bit register called I."
@@ -86,7 +88,7 @@ impl<T> Machine<T>
 where
     T: InstructionParser,
 {
-    pub fn new(name: &str, ins_parser: T) -> Self {
+    pub fn new(name: &str, ins_parser: T, headless: bool) -> Self {
         Self {
             name: name.to_string(),
             counter: 512,
@@ -96,6 +98,13 @@ where
             },
             graphics: GraphicsMemory {
                 mem: [[0; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
+            },
+            display: {
+                if headless {
+                    None
+                } else {
+                    Some(VideoDisplay::new())
+                }
             },
             stack: [0; STACK_SIZE],
             v: [0; REGISTER_COUNT],
@@ -276,6 +285,11 @@ where
             when the sprite is drawn, and to 0 if that doesn’t happen.
             */
             Instruction::DisplaySprite(reg_x, reg_y, h) => {
+                let display = match &mut self.display {
+                    Some(d) => d,
+                    None => return,
+                };
+
                 if h > 15 {
                     panic!("Sprite Height exceeded maximum limit!");
                 }
@@ -317,7 +331,7 @@ where
                     self.v[0xF] = 1;
                 }
                 trace!("{:?}", self.graphics);
-                // TODO: Re-draw the screen here.
+                display.draw(&self.graphics);
             }
             _ => unimplemented!(),
         };
@@ -380,24 +394,51 @@ where
 
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
-        loop {
-            let opcode = self.instruction_fetch()?;
-            if opcode != 0 {
-                trace!("PC: {}, opcode = {:X}", self.counter, opcode);
+        'running: loop {
+            match self.tick() {
+                Err(e) => {
+                    error!("Got error on CPU tick: {}", e);
+                    return Err(String::from("CPU Tick Error"));
+                }
+                Ok(_) => match &mut self.display {
+                    Some(display) => {
+                        match display.poll_events() {
+                            Err(e) => {
+                                error!("Got error: {}", e);
+                                break 'running;
+                            }
+                            _ => {}
+                        };
+                        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+                    }
+                    None => {}
+                },
             }
-
-            let instruction = self.instruction_decode(opcode);
-            trace!("Instruction: {:X?}", instruction);
-
-            self.execute(&instruction);
-
-            self.handle_timers();
         }
+        Ok(())
+    }
+
+    // Single tick of the CPU
+    pub fn tick(&mut self) -> Result<(), String> {
+        let opcode = self.instruction_fetch()?;
+        if opcode != 0 {
+            trace!("PC: {}, opcode = {:X}", self.counter, opcode);
+        }
+
+        let instruction = self.instruction_decode(opcode);
+        trace!("Instruction: {:X?}", instruction);
+
+        self.execute(&instruction);
+
+        self.handle_timers();
+        Ok(())
     }
 }
 
+use crate::display::VideoDisplay;
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
+use std::time::Duration;
 
 mod tests {
     use super::*;
@@ -406,7 +447,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_no_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser {}, true);
         vm._copy_into_mem(&mut tmpfile).unwrap();
         assert_eq!(vm.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
@@ -418,7 +459,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_some_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser {}, true);
         write!(tmpfile, "Hello World!").unwrap(); // Write
         tmpfile.seek(SeekFrom::Start(0)).unwrap(); // Seek to start
         vm._copy_into_mem(&mut tmpfile).unwrap();
@@ -454,7 +495,7 @@ mod tests {
         // TODO: We might need a reset method to go back to the original state
         // Each instruction has a primary task and might also potentially have
         // some side-effect. We need to test both
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
         machine.execute(&Instruction::ClearScreen);
         assert_eq!(machine.counter, 512);
         assert_eq!(machine.stack_ptr, 0);
@@ -474,7 +515,7 @@ mod tests {
 
     #[test]
     fn test_execute_ret() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
         // TODO: Should we artificially introduce modifications in the machine to test behaviour?
         // TODO: Perhaps a fixture-like ROM which is read before each test run.
         // Seems like it would be necessary otherwise a lot of behaviour can't be tested.
@@ -499,7 +540,7 @@ mod tests {
 
     #[test]
     fn test_execute_sys() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
         machine.execute(&Instruction::SYS);
         assert_eq!(machine.counter, 512);
         assert_eq!(machine.stack_ptr, 0);
@@ -518,7 +559,7 @@ mod tests {
 
     #[test]
     fn test_execute_jump() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
 
@@ -544,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_execute_call() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         assert_eq!(machine.stack_ptr, 0);
@@ -569,7 +610,7 @@ mod tests {
 
     #[test]
     fn test_execute_se() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.execute(&Instruction::SkipEqualsByte(machine.v[1], 0x0001)); // nothing should happen
@@ -591,7 +632,7 @@ mod tests {
 
     #[test]
     fn test_execute_sne() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.v[1] = 0x0001;
@@ -616,7 +657,7 @@ mod tests {
 
     #[test]
     fn test_execute_se_reg() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.v[1] = 0x0001;
@@ -647,7 +688,7 @@ mod tests {
     #[test]
     fn test_execute_display_sprite() {
         let _ = env_logger::init();
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, false);
 
         // Set up the coordinate values (X, Y) in the V registers
         machine.v[0x08] = 0x1c; // 29..36 (8-bit wide)

@@ -40,3 +40,6 @@ lint:
 %:
 	$(MAKE) build
 	RUST_LOG=trace cargo run roms/games/$@.ch8
+
+test:
+	RUST_LOG=trace cargo test -- --nocapture
