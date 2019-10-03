@@ -7,8 +7,11 @@ SOURCES := src/bitmasks.rs \
 	src/ophandlers.rs
 
 .PHONY: all
-all: $(SOURCES)
+all: $(SOURCES) fmt
 	cargo check
+
+.PHONY: fmt
+	cargo fmt
 
 .PHONY: update
 update:
