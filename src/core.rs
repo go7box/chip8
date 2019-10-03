@@ -326,30 +326,43 @@ where
         Ok(())
     }
 
+    fn instruction_fetch(&mut self) -> Result<u16, String> {
+        // we check for 4095 because we need to read 2 bytes.
+        if self.counter > 4095 {
+            return Err(String::from("PC out of bounds"));
+        }
+
+        if !self.skip_increment {
+            self.inc_pc();
+        }
+        self.skip_increment = false;
+
+        let pc: usize = usize::from(self.counter);
+        Ok(Self::get_opcode(&self.mem.mem[pc..=pc + 1]))
+    }
+
+    fn instruction_decode(&self, opcode: u16) -> Instruction {
+        self.instruction_parser
+            .try_from(opcode)
+            .expect("Could not parse opcode")
+    }
+
+    fn handle_timers(&self) {}
+
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
         loop {
-            // we check for 4095 because we need to read 2 bytes.
-            if self.counter > 4095 {
-                return Err(String::from("PC out of bounds"));
-            }
-            let opcode = {
-                let pc: usize = usize::from(self.counter);
-                Self::get_opcode(&self.mem.mem[pc..=pc + 1])
-            };
+            let opcode = self.instruction_fetch()?;
             if opcode != 0 {
                 trace!("PC: {}, opcode = {:X}", self.counter, opcode);
             }
-            let instruction = self
-                .instruction_parser
-                .try_from(opcode)
-                .expect("Could not parse opcode");
+
+            let instruction = self.instruction_decode(opcode);
             trace!("Instruction: {:X?}", instruction);
+
             self.execute(&instruction);
-            if !self.skip_increment {
-                self.inc_pc();
-            }
-            self.skip_increment = false;
+
+            self.handle_timers();
         }
     }
 }
