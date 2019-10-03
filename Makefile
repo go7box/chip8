@@ -1,4 +1,38 @@
+SOURCES := src/bitmasks.rs \
+	src/core.rs \
+	src/instructions.rs \
+	src/main.rs \
+	src/opcodes.rs \
+	src/opcodesv2.rs \
+	src/ophandlers.rs
+
+.PHONY: all
+all: $(SOURCES)
+	cargo check
+
+.PHONY: update
+update:
+	touch src/*
+
+.PHONY: force
+force: update all
+
+.PHONY: build
+build:
+	cargo build
+
+.PHONY: release
+release:
+	cargo build --release
+
+.PHONY: flight
 flight:
 	RUST_LOG=trace cargo run roms/games/Space\ Flight.ch8
+
+.PHONY: lint
 lint:
 	cargo clippy
+
+%:
+	$(MAKE) build
+	RUST_LOG=trace cargo run roms/games/$@.ch8
