@@ -2,12 +2,15 @@
 extern crate log;
 extern crate env_logger;
 extern crate rand;
+#[macro_use]
+extern crate lazy_static;
 
 use crate::instructions::InstructionParser;
 use std::env;
 
 mod bitmasks;
 mod core;
+mod display;
 mod instructions;
 mod opcodes;
 // mod opcodesv2;

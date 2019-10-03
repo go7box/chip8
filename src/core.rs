@@ -10,16 +10,17 @@ const STACK_SIZE: usize = 16;
 const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
-const DISPLAY_WIDTH: usize = 64;
-const DISPLAY_HEIGHT: usize = 32;
 const SPRITE_WIDTH: usize = 8;
+
+pub const DISPLAY_WIDTH: usize = 64;
+pub const DISPLAY_HEIGHT: usize = 32;
 
 struct Memory {
     mem: [u8; MEMORY_SIZE],
 }
 
-struct GraphicsMemory {
-    mem: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
+pub struct GraphicsMemory {
+    pub mem: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
 }
 
 impl fmt::Debug for Memory {
@@ -57,6 +58,7 @@ pub struct Machine<T: InstructionParser> {
     stack_ptr: u8,
     mem: Memory,
     graphics: GraphicsMemory,
+    display: VideoDisplay,
     stack: [u16; STACK_SIZE],
     v: [u8; REGISTER_COUNT], // registers: v0 to vf
     i: u16,                  // "There is also a 16-bit register called I."
@@ -90,6 +92,7 @@ where
             graphics: GraphicsMemory {
                 mem: [[0; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
             },
+            display: VideoDisplay::new(),
             stack: [0; STACK_SIZE],
             v: [0; REGISTER_COUNT],
             i: 0,
@@ -306,7 +309,7 @@ where
                     self.v[0xF] = 1;
                 }
                 trace!("{:?}", self.graphics);
-                // TODO: Re-draw the screen here.
+                self.display.draw(&self.graphics);
             }
             _ => unimplemented!(),
         };
@@ -328,34 +331,58 @@ where
 
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
-        loop {
-            // we check for 4095 because we need to read 2 bytes.
-            if self.counter > 4095 {
-                return Err(String::from("PC out of bounds"));
+        'running: loop {
+            match self.tick() {
+                Err(e) => {
+                    error!("Got error on CPU tick: {}", e);
+                    return Err(String::from("CPU Tick Error"));
+                }
+                Ok(_) => {
+                    match self.display.poll_events() {
+                        Err(e) => {
+                            error!("Got error: {}", e);
+                            break 'running;
+                        }
+                        _ => {}
+                    }
+                    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+                }
             }
-            let opcode = {
-                let pc: usize = usize::from(self.counter);
-                Self::get_opcode(&self.mem.mem[pc..=pc + 1])
-            };
-            if opcode != 0 {
-                trace!("PC: {}, opcode = {:X}", self.counter, opcode);
-            }
-            let instruction = self
-                .instruction_parser
-                .try_from(opcode)
-                .expect("Could not parse opcode");
-            trace!("Instruction: {:X?}", instruction);
-            self.execute(&instruction);
-            if !self.skip_increment {
-                self.inc_pc();
-            }
-            self.skip_increment = false;
         }
+        Ok(())
+    }
+
+    // Single tick of the CPU
+    pub fn tick(&mut self) -> Result<(), String> {
+        // we check for 4095 because we need to read 2 bytes.
+        if self.counter > 4095 {
+            return Err(String::from("PC out of bounds"));
+        }
+        let opcode = {
+            let pc: usize = usize::from(self.counter);
+            Self::get_opcode(&self.mem.mem[pc..=pc + 1])
+        };
+        if opcode != 0 {
+            trace!("PC: {}, opcode = {:X}", self.counter, opcode);
+        }
+        let instruction = self
+            .instruction_parser
+            .try_from(opcode)
+            .expect("Could not parse opcode");
+        trace!("Instruction: {:X?}", instruction);
+        self.execute(&instruction);
+        if !self.skip_increment {
+            self.inc_pc();
+        }
+        self.skip_increment = false;
+        Ok(())
     }
 }
 
+use crate::display::VideoDisplay;
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
+use std::time::Duration;
 
 mod tests {
     use super::*;
