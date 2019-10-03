@@ -274,7 +274,7 @@ where
             when the sprite is drawn, and to 0 if that doesn’t happen.
             */
             Instruction::DisplaySprite(reg_x, reg_y, h) => {
-                let display = match self.display {
+                let display = match &mut self.display {
                     Some(d) => d,
                     None => return,
                 };
@@ -348,16 +348,19 @@ where
                     error!("Got error on CPU tick: {}", e);
                     return Err(String::from("CPU Tick Error"));
                 }
-                Ok(_) => {
-                    match self.display.poll_events() {
-                        Err(e) => {
-                            error!("Got error: {}", e);
-                            break 'running;
-                        }
-                        _ => {}
+                Ok(_) => match &mut self.display {
+                    Some(display) => {
+                        match display.poll_events() {
+                            Err(e) => {
+                                error!("Got error: {}", e);
+                                break 'running;
+                            }
+                            _ => {}
+                        };
+                        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
                     }
-                    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-                }
+                    None => {}
+                },
             }
         }
         Ok(())
@@ -643,7 +646,7 @@ mod tests {
     #[test]
     fn test_execute_display_sprite() {
         let _ = env_logger::init();
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, false);
 
         // Set up the coordinate values (X, Y) in the V registers
         machine.v[0x08] = 0x1c; // 29..36 (8-bit wide)

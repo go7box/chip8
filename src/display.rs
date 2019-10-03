@@ -32,9 +32,9 @@ pub struct VideoDisplay {
 
 impl VideoDisplay {
     pub fn new() -> Self {
-        let sdl_context= sdl2::init().unwrap();
-        let video_subsystem : sdl2::VideoSubsystem = sdl_context.video().unwrap();
-        let canvas : Canvas<Window> = VideoDisplay::get_canvas(&video_subsystem);
+        let sdl_context = sdl2::init().unwrap();
+        let video_subsystem: sdl2::VideoSubsystem = sdl_context.video().unwrap();
+        let canvas: Canvas<Window> = VideoDisplay::get_canvas(&video_subsystem);
         VideoDisplay {
             ctx: sdl_context,
             video: video_subsystem,
