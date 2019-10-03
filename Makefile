@@ -11,6 +11,7 @@ all: $(SOURCES) fmt
 	cargo check
 
 .PHONY: fmt
+fmt:
 	cargo fmt
 
 .PHONY: update
@@ -29,7 +30,7 @@ release:
 	cargo build --release
 
 .PHONY: flight
-flight:
+flight: fmt
 	RUST_LOG=trace cargo run roms/games/Space\ Flight.ch8
 
 .PHONY: lint
