@@ -326,11 +326,8 @@ where
                     self.v[0xF] = 1;
                 }
                 trace!("{:?}", self.graphics);
-                match self.display {
-                    Some(ref mut d) => {
-                        d.draw(&self.graphics);
-                    }
-                    None => {} // headless mode
+                if let Some(ref mut d) = self.display {
+                    d.draw(&self.graphics);
                 }
             }
             _ => unimplemented!(),
@@ -383,11 +380,9 @@ where
             }
         }
 
-        if self.delay_register > 0 {
-            if self.delay_last.elapsed() >= self.timer_delay {
-                self.delay_register -= 1;
-                self.delay_last = current_time;
-            }
+        if self.delay_register > 0 && self.delay_last.elapsed() >= self.timer_delay {
+            self.delay_register -= 1;
+            self.delay_last = current_time;
         }
         ::std::thread::sleep(self.instruction_delay);
     }
@@ -398,19 +393,14 @@ where
             match self.tick() {
                 Err(e) => return Err(e),
                 Ok(_) => {
-                    match self.display {
-                        Some(ref mut d) => match d.poll_events() {
-                            Err(e) => {
-                                return Err(e);
-                            }
-                            _ => {}
-                        },
-                        None => {} // headless
-                    };
+                    if let Some(ref mut d) = self.display {
+                        if let Err(e) = d.poll_events() {
+                            return Err(e);
+                        }
+                    }
                 }
             }
         }
-        Ok(())
     }
 
     // Single tick of the CPU

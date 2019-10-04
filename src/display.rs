@@ -1,6 +1,5 @@
 extern crate sdl2;
 
-use self::sdl2::pixels::Color;
 use self::sdl2::render::Canvas;
 use self::sdl2::video::Window;
 
@@ -27,7 +26,6 @@ lazy_static! {
 
 pub struct VideoDisplay {
     ctx: sdl2::Sdl,
-    video: sdl2::VideoSubsystem,
     canvas: sdl2::render::Canvas<Window>,
 }
 
@@ -38,7 +36,6 @@ impl VideoDisplay {
         let canvas: Canvas<Window> = VideoDisplay::get_canvas(&video_subsystem);
         VideoDisplay {
             ctx: sdl_context,
-            video: video_subsystem,
             canvas,
         }
     }
