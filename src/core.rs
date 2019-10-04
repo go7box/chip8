@@ -436,7 +436,6 @@ where
 use crate::display::VideoDisplay;
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
-use std::time::Duration;
 
 mod tests {
     use super::*;
@@ -686,7 +685,7 @@ mod tests {
     #[test]
     fn test_execute_display_sprite() {
         let _ = env_logger::init();
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, false);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         // Set up the coordinate values (X, Y) in the V registers
         machine.v[0x08] = 0x1c; // 29..36 (8-bit wide)

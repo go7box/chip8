@@ -12,8 +12,9 @@ The video sub-system used to render things on a canvas via sdl2
 SDL2 Reference: https://docs.rs/sdl2/0.32.2/sdl2/
 */
 
-const WINDOW_WIDTH: u32 = 1024;
-const WINDOW_HEIGHT: u32 = 768;
+const SCALE: u32 = 16;
+const WINDOW_WIDTH: u32 = (DISPLAY_WIDTH as u32) * SCALE;
+const WINDOW_HEIGHT: u32 = (DISPLAY_HEIGHT as u32) * SCALE;
 
 #[allow(deprecated)]
 lazy_static! {
@@ -81,11 +82,10 @@ impl VideoDisplay {
     Draw a 1x1 rectangle to represent a pixel. Might not work but lets give it a try.
     */
     pub fn draw_pixel(&mut self, x: usize, y: usize) {
-        let scale = 16;
-        let rect_x = (x * scale) as i32;
-        let rect_y = (y * scale) as i32;
-        let rect_width = 1 * scale as u32;
-        let rect_height = 1 * scale as u32;
+        let rect_x = (x * SCALE as usize) as i32;
+        let rect_y = (y * SCALE as usize) as i32;
+        let rect_width = SCALE;
+        let rect_height = SCALE;
         let rect = sdl2::rect::Rect::new(rect_y, rect_x, rect_width, rect_height);
         let canvas = &mut self.canvas;
         match canvas.fill_rect(rect) {
