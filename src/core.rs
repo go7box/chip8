@@ -2,6 +2,7 @@ use rand::Rng;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
+use std::time::{Duration, Instant};
 
 use crate::instructions::{Instruction, InstructionParser};
 
@@ -11,6 +12,8 @@ const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
 const SPRITE_WIDTH: usize = 8;
+const CLOCK_SPEED: u64 = 500; // 500 Hz
+const TIMER_FREQ: u64 = 60; // 60 Hz
 
 pub const DISPLAY_WIDTH: usize = 64;
 pub const DISPLAY_HEIGHT: usize = 32;
@@ -66,6 +69,10 @@ pub struct Machine<T: InstructionParser> {
     sound_register: u8,
     instruction_parser: T,
     skip_increment: bool,
+    instruction_delay: Duration,
+    timer_delay: Duration,
+    delay_last: Instant,
+    sound_last: Instant,
 }
 
 impl<T> fmt::Debug for Machine<T>
@@ -104,8 +111,12 @@ where
             i: 0,
             delay_register: 0,
             sound_register: 0,
+            sound_last: Instant::now(),
+            delay_last: Instant::now(),
             instruction_parser: ins_parser,
             skip_increment: false,
+            instruction_delay: Duration::from_millis(1_000 / CLOCK_SPEED),
+            timer_delay: Duration::from_millis(1_000 / TIMER_FREQ),
         }
     }
 
@@ -340,6 +351,47 @@ where
         Ok(())
     }
 
+    fn instruction_fetch(&mut self) -> Result<u16, String> {
+        // we check for 4095 because we need to read 2 bytes.
+        if self.counter > 4095 {
+            return Err(String::from("PC out of bounds"));
+        }
+
+        if !self.skip_increment {
+            self.inc_pc();
+        }
+        self.skip_increment = false;
+
+        let pc: usize = usize::from(self.counter);
+        Ok(Self::get_opcode(&self.mem.mem[pc..=pc + 1]))
+    }
+
+    fn instruction_decode(&self, opcode: u16) -> Instruction {
+        self.instruction_parser
+            .try_from(opcode)
+            .expect("Could not parse opcode")
+    }
+
+    fn handle_timers(&mut self) {
+        let current_time = Instant::now();
+
+        if self.sound_register > 0 {
+            trace!("BEEEP!!!");
+            if self.sound_last.elapsed() >= self.timer_delay {
+                self.sound_register -= 1;
+                self.sound_last = current_time;
+            }
+        }
+
+        if self.delay_register > 0 {
+            if self.delay_last.elapsed() >= self.timer_delay {
+                self.delay_register -= 1;
+                self.delay_last = current_time;
+            }
+        }
+        ::std::thread::sleep(self.instruction_delay);
+    }
+
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
         loop {
@@ -366,27 +418,17 @@ where
 
     // Single tick of the CPU
     pub fn tick(&mut self) -> Result<(), String> {
-        // we check for 4095 because we need to read 2 bytes.
-        if self.counter > 4095 {
-            return Err(String::from("PC out of bounds"));
-        }
-        let opcode = {
-            let pc: usize = usize::from(self.counter);
-            Self::get_opcode(&self.mem.mem[pc..=pc + 1])
-        };
+        let opcode = self.instruction_fetch()?;
         if opcode != 0 {
             trace!("PC: {}, opcode = {:X}", self.counter, opcode);
         }
-        let instruction = self
-            .instruction_parser
-            .try_from(opcode)
-            .expect("Could not parse opcode");
+
+        let instruction = self.instruction_decode(opcode);
         trace!("Instruction: {:X?}", instruction);
+
         self.execute(&instruction);
-        if !self.skip_increment {
-            self.inc_pc();
-        }
-        self.skip_increment = false;
+
+        self.handle_timers();
         Ok(())
     }
 }
@@ -644,7 +686,7 @@ mod tests {
     #[test]
     fn test_execute_display_sprite() {
         let _ = env_logger::init();
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, false);
 
         // Set up the coordinate values (X, Y) in the V registers
         machine.v[0x08] = 0x1c; // 29..36 (8-bit wide)
