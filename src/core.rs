@@ -12,7 +12,7 @@ const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
 const SPRITE_WIDTH: usize = 8;
-const CLOCK_SPEED: u64 = 500; // 500 Hz
+const CLOCK_SPEED: u64 = 60; // 60 Hz
 const TIMER_FREQ: u64 = 60; // 60 Hz
 
 pub const DISPLAY_WIDTH: usize = 64;
@@ -406,7 +406,6 @@ where
                                 }
                                 _ => {}
                             }
-                            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
                         }
                         None => {} // headless
                     };
