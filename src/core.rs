@@ -274,11 +274,6 @@ where
             when the sprite is drawn, and to 0 if that doesn’t happen.
             */
             Instruction::DisplaySprite(reg_x, reg_y, h) => {
-                let display = match self.display {
-                    Some(d) => d,
-                    None => return,
-                };
-
                 if h > 15 {
                     panic!("Sprite Height exceeded maximum limit!");
                 }
@@ -320,7 +315,12 @@ where
                     self.v[0xF] = 1;
                 }
                 trace!("{:?}", self.graphics);
-                display.draw(&self.graphics);
+                match self.display {
+                    Some(ref mut d) => {
+                        d.draw(&self.graphics);
+                    }
+                    None => {} // headless mode
+                }
             }
             _ => unimplemented!(),
         };
@@ -342,21 +342,22 @@ where
 
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
-        'running: loop {
+        loop {
             match self.tick() {
-                Err(e) => {
-                    error!("Got error on CPU tick: {}", e);
-                    return Err(String::from("CPU Tick Error"));
-                }
+                Err(e) => return Err(e),
                 Ok(_) => {
-                    match self.display.poll_events() {
-                        Err(e) => {
-                            error!("Got error: {}", e);
-                            break 'running;
+                    match self.display {
+                        Some(ref mut d) => {
+                            match d.poll_events() {
+                                Err(e) => {
+                                    return Err(e);
+                                }
+                                _ => {}
+                            }
+                            ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
                         }
-                        _ => {}
-                    }
-                    ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+                        None => {} // headless
+                    };
                 }
             }
         }

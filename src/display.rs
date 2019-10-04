@@ -3,7 +3,6 @@ extern crate sdl2;
 use self::sdl2::pixels::Color;
 use self::sdl2::render::Canvas;
 use self::sdl2::video::Window;
-use self::sdl2::Sdl;
 
 use crate::core::{GraphicsMemory, DISPLAY_HEIGHT, DISPLAY_WIDTH};
 
@@ -16,6 +15,7 @@ SDL2 Reference: https://docs.rs/sdl2/0.32.2/sdl2/
 const WINDOW_WIDTH: u32 = 1024;
 const WINDOW_HEIGHT: u32 = 768;
 
+#[allow(deprecated)]
 lazy_static! {
     static ref COLOR_RED: sdl2::pixels::Color = sdl2::pixels::Color::RGB(255, 0, 0);
     static ref COLOR_BLUE: sdl2::pixels::Color = sdl2::pixels::Color::RGB(0, 0, 255);
@@ -32,9 +32,9 @@ pub struct VideoDisplay {
 
 impl VideoDisplay {
     pub fn new() -> Self {
-        let sdl_context= sdl2::init().unwrap();
-        let video_subsystem : sdl2::VideoSubsystem = sdl_context.video().unwrap();
-        let canvas : Canvas<Window> = VideoDisplay::get_canvas(&video_subsystem);
+        let sdl_context = sdl2::init().unwrap();
+        let video_subsystem: sdl2::VideoSubsystem = sdl_context.video().unwrap();
+        let canvas: Canvas<Window> = VideoDisplay::get_canvas(&video_subsystem);
         VideoDisplay {
             ctx: sdl_context,
             video: video_subsystem,
@@ -72,7 +72,8 @@ impl VideoDisplay {
                 }
             }
         }
-        self.canvas.present();
+        let canvas_ref = &mut self.canvas;
+        canvas_ref.present();
         Ok(())
     }
 
@@ -86,7 +87,11 @@ impl VideoDisplay {
         let rect_width = 1 * scale as u32;
         let rect_height = 1 * scale as u32;
         let rect = sdl2::rect::Rect::new(rect_y, rect_x, rect_width, rect_height);
-        self.canvas.fill_rect(rect);
+        let canvas = &mut self.canvas;
+        match canvas.fill_rect(rect) {
+            Ok(_) => {}
+            Err(e) => error!("Could not fill in the rectangle: {}", e),
+        }
     }
 
     /*
@@ -97,13 +102,16 @@ impl VideoDisplay {
             for j in 0..DISPLAY_WIDTH {
                 let pixel = graphics.mem[i][j];
                 if pixel != 0 {
-                    self.canvas.set_draw_color(*COLOR_BLUE);
+                    let canvas = &mut self.canvas;
+                    canvas.set_draw_color(*COLOR_BLUE);
                 } else {
-                    self.canvas.set_draw_color(*COLOR_WHITE);
+                    let canvas = &mut self.canvas;
+                    canvas.set_draw_color(*COLOR_WHITE);
                 }
                 self.draw_pixel(i, j);
             }
         }
-        self.canvas.present();
+        let canvas = &mut self.canvas;
+        canvas.present();
     }
 }
