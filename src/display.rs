@@ -15,7 +15,6 @@ const SCALE: u32 = 16;
 const WINDOW_WIDTH: u32 = (DISPLAY_WIDTH as u32) * SCALE;
 const WINDOW_HEIGHT: u32 = (DISPLAY_HEIGHT as u32) * SCALE;
 
-#[allow(deprecated)]
 lazy_static! {
     static ref COLOR_RED: sdl2::pixels::Color = sdl2::pixels::Color::RGB(255, 0, 0);
     static ref COLOR_BLUE: sdl2::pixels::Color = sdl2::pixels::Color::RGB(0, 0, 255);
