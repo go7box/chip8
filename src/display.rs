@@ -55,7 +55,7 @@ impl VideoDisplay {
     pub fn get_canvas(video: &sdl2::VideoSubsystem) -> Canvas<Window> {
         let window = VideoDisplay::init_window(video);
         let mut canvas = window.into_canvas().present_vsync().build().unwrap();
-        canvas.set_draw_color(Color::RGB(255, 255, 255));
+        canvas.set_draw_color(*COLOR_WHITE);
         canvas.clear();
         canvas.present();
         canvas
