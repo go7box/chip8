@@ -399,14 +399,12 @@ where
                 Err(e) => return Err(e),
                 Ok(_) => {
                     match self.display {
-                        Some(ref mut d) => {
-                            match d.poll_events() {
-                                Err(e) => {
-                                    return Err(e);
-                                }
-                                _ => {}
+                        Some(ref mut d) => match d.poll_events() {
+                            Err(e) => {
+                                return Err(e);
                             }
-                        }
+                            _ => {}
+                        },
                         None => {} // headless
                     };
                 }
