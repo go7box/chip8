@@ -2,6 +2,7 @@ use rand::Rng;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
+use std::time::{Duration, Instant};
 
 use crate::instructions::{Instruction, InstructionParser};
 
@@ -10,9 +11,19 @@ const STACK_SIZE: usize = 16;
 const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
+const SPRITE_WIDTH: usize = 8;
+const CLOCK_SPEED: u64 = 60; // 60 Hz
+const TIMER_FREQ: u64 = 60; // 60 Hz
+
+pub const DISPLAY_WIDTH: usize = 64;
+pub const DISPLAY_HEIGHT: usize = 32;
 
 struct Memory {
     mem: [u8; MEMORY_SIZE],
+}
+
+pub struct GraphicsMemory {
+    pub mem: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
 }
 
 impl fmt::Debug for Memory {
@@ -28,11 +39,29 @@ impl fmt::Debug for Memory {
     }
 }
 
+impl fmt::Debug for GraphicsMemory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "[[")?;
+        for (i, row) in self.mem.iter().enumerate() {
+            if !row.is_empty() {
+                write!(f, "{}:", i)?;
+                for (_, byte) in row.iter().enumerate() {
+                    write!(f, "{}", byte)?;
+                }
+                writeln!(f)?;
+            }
+        }
+        write!(f, "]]")
+    }
+}
+
 pub struct Machine<T: InstructionParser> {
     name: String,
     counter: u16,
     stack_ptr: u8,
     mem: Memory,
+    graphics: GraphicsMemory,
+    display: Option<VideoDisplay>,
     stack: [u16; STACK_SIZE],
     v: [u8; REGISTER_COUNT], // registers: v0 to vf
     i: u16,                  // "There is also a 16-bit register called I."
@@ -40,6 +69,10 @@ pub struct Machine<T: InstructionParser> {
     sound_register: u8,
     instruction_parser: T,
     skip_increment: bool,
+    instruction_delay: Duration,
+    timer_delay: Duration,
+    delay_last: Instant,
+    sound_last: Instant,
 }
 
 impl<T> fmt::Debug for Machine<T>
@@ -55,7 +88,7 @@ impl<T> Machine<T>
 where
     T: InstructionParser,
 {
-    pub fn new(name: &str, ins_parser: T) -> Self {
+    pub fn new(name: &str, ins_parser: T, headless: bool) -> Self {
         Self {
             name: name.to_string(),
             counter: 512,
@@ -63,13 +96,27 @@ where
             mem: Memory {
                 mem: [0; MEMORY_SIZE],
             },
+            graphics: GraphicsMemory {
+                mem: [[0; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
+            },
+            display: {
+                if headless {
+                    None
+                } else {
+                    Some(VideoDisplay::new())
+                }
+            },
             stack: [0; STACK_SIZE],
             v: [0; REGISTER_COUNT],
             i: 0,
             delay_register: 0,
             sound_register: 0,
+            sound_last: Instant::now(),
+            delay_last: Instant::now(),
             instruction_parser: ins_parser,
             skip_increment: false,
+            instruction_delay: Duration::from_millis(1_000 / CLOCK_SPEED),
+            timer_delay: Duration::from_millis(1_000 / TIMER_FREQ),
         }
     }
 
@@ -229,6 +276,60 @@ where
                 }
                 debug!("{:?}", self.mem);
             }
+            /*
+            Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels
+            and a height of N pixels.
+            Each row of 8 pixels is read as bit-coded starting from memory location I;
+            I value doesn’t change after the execution of this instruction.
+            As described above, VF is set to 1 if any screen pixels are flipped from set to unset
+            when the sprite is drawn, and to 0 if that doesn’t happen.
+            */
+            Instruction::DisplaySprite(reg_x, reg_y, h) => {
+                if h > 15 {
+                    panic!("Sprite Height exceeded maximum limit!");
+                }
+                let vx = self.v[usize::from(reg_x)] as usize;
+                let vy = self.v[usize::from(reg_y)] as usize;
+                let height = h as usize;
+                let mut flipped = false;
+
+                /*
+                We need to paint a maximum 8x15 sprite, following some rules
+
+                1. We use modulo width|height to wrap-around the sprites on the display grid
+
+                2. "Each row of 8 pixels is read as bit-coded starting from memory location I"
+                    - for this, we start at memory location I, and at each iteration,
+                    we get the bytes in memory. For each byte, we ensure we are collecting the corresponding
+                    position's bit-value (by shifting bits and then grabbing the LSB). Unsure if this is correct.
+
+                3. "VF is set to 1 if any screen pixels are flipped from set to unset"
+                    If a pixel was set already, and is now going to be unset, we set VF to 1.
+                    The only case of a pixel being set already and now being unset is when
+                    both the pixel and the graphics memory are both = 1 (since we XOR them).
+
+                4. Sprites are XORed onto the existing screen
+                */
+                for row in 0..height {
+                    let y = (vy + row) % DISPLAY_HEIGHT;
+                    let px = self.mem.mem[usize::from(self.i) + row];
+                    for col in 0..SPRITE_WIDTH {
+                        let x = (vx + col) % DISPLAY_WIDTH;
+                        let bit = px >> (7 - col as u8) & 1;
+                        if bit == 1 && self.graphics.mem[y][x] == 1 {
+                            flipped |= true;
+                        }
+                        self.graphics.mem[y][x] ^= bit;
+                    }
+                }
+                if flipped {
+                    self.v[0xF] = 1;
+                }
+                trace!("{:?}", self.graphics);
+                if let Some(ref mut d) = self.display {
+                    d.draw(&self.graphics);
+                }
+            }
             _ => unimplemented!(),
         };
         trace!("{:?}", self);
@@ -247,46 +348,90 @@ where
         Ok(())
     }
 
+    fn instruction_fetch(&mut self) -> Result<u16, String> {
+        // we check for 4095 because we need to read 2 bytes.
+        if self.counter > 4095 {
+            return Err(String::from("PC out of bounds"));
+        }
+
+        if !self.skip_increment {
+            self.inc_pc();
+        }
+        self.skip_increment = false;
+
+        let pc: usize = usize::from(self.counter);
+        Ok(Self::get_opcode(&self.mem.mem[pc..=pc + 1]))
+    }
+
+    fn instruction_decode(&self, opcode: u16) -> Instruction {
+        self.instruction_parser
+            .try_from(opcode)
+            .expect("Could not parse opcode")
+    }
+
+    fn handle_timers(&mut self) {
+        let current_time = Instant::now();
+
+        if self.sound_register > 0 {
+            trace!("BEEEP!!!");
+            if self.sound_last.elapsed() >= self.timer_delay {
+                self.sound_register -= 1;
+                self.sound_last = current_time;
+            }
+        }
+
+        if self.delay_register > 0 && self.delay_last.elapsed() >= self.timer_delay {
+            self.delay_register -= 1;
+            self.delay_last = current_time;
+        }
+        ::std::thread::sleep(self.instruction_delay);
+    }
+
     // Start the virtual machine: This is the fun part!
     pub fn start(&mut self) -> Result<(), String> {
         loop {
-            // we check for 4095 because we need to read 2 bytes.
-            if self.counter > 4095 {
-                return Err(String::from("PC out of bounds"));
+            match self.tick() {
+                Err(e) => return Err(e),
+                Ok(_) => {
+                    if let Some(ref mut d) = self.display {
+                        if let Err(e) = d.poll_events() {
+                            return Err(e);
+                        }
+                    }
+                }
             }
-            let opcode = {
-                let pc: usize = usize::from(self.counter);
-                Self::get_opcode(&self.mem.mem[pc..=pc + 1])
-            };
-            if opcode != 0 {
-                trace!("PC: {}, opcode = {:X}", self.counter, opcode);
-            }
-            let instruction = self
-                .instruction_parser
-                .try_from(opcode)
-                .expect("Could not parse opcode");
-            trace!("Instruction: {:X?}", instruction);
-            self.execute(&instruction);
-            if !self.skip_increment {
-                self.inc_pc();
-            }
-            self.skip_increment = false;
         }
+    }
+
+    // Single tick of the CPU
+    pub fn tick(&mut self) -> Result<(), String> {
+        let opcode = self.instruction_fetch()?;
+        if opcode != 0 {
+            trace!("PC: {}, opcode = {:X}", self.counter, opcode);
+        }
+
+        let instruction = self.instruction_decode(opcode);
+        trace!("Instruction: {:X?}", instruction);
+
+        self.execute(&instruction);
+
+        self.handle_timers();
+        Ok(())
     }
 }
 
+use crate::display::VideoDisplay;
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
 
 mod tests {
     use super::*;
     use crate::opcodes::OpcodeMaskParser;
-    use crate::opcodesv2::OpcodeTable;
 
     #[test]
     fn test_copy_into_mem_no_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeTable {});
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser {}, true);
         vm._copy_into_mem(&mut tmpfile).unwrap();
         assert_eq!(vm.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
@@ -298,7 +443,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_some_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeTable {});
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser {}, true);
         write!(tmpfile, "Hello World!").unwrap(); // Write
         tmpfile.seek(SeekFrom::Start(0)).unwrap(); // Seek to start
         vm._copy_into_mem(&mut tmpfile).unwrap();
@@ -312,13 +457,19 @@ mod tests {
 
     #[test]
     fn test_create_opcode() {
-        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0x31, 0x42]), 0x3142);
-        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x0102);
-        assert_eq!(Machine::<OpcodeTable>::get_opcode(&[0xAB, 0x9C]), 0xAB9C);
+        assert_eq!(
+            Machine::<OpcodeMaskParser>::get_opcode(&[0x31, 0x42]),
+            0x3142
+        );
+        assert_eq!(Machine::<OpcodeMaskParser>::get_opcode(&[0x1, 0x2]), 0x0102);
+        assert_eq!(
+            Machine::<OpcodeMaskParser>::get_opcode(&[0xAB, 0x9C]),
+            0xAB9C
+        );
 
         // doesn't magically append or prepend zeroes to the final output
-        assert_ne!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x1200);
-        assert_ne!(Machine::<OpcodeTable>::get_opcode(&[0x1, 0x2]), 0x0012);
+        assert_ne!(Machine::<OpcodeMaskParser>::get_opcode(&[0x1, 0x2]), 0x1200);
+        assert_ne!(Machine::<OpcodeMaskParser>::get_opcode(&[0x1, 0x2]), 0x0012);
     }
 
     #[test]
@@ -328,7 +479,7 @@ mod tests {
         // TODO: We might need a reset method to go back to the original state
         // Each instruction has a primary task and might also potentially have
         // some side-effect. We need to test both
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
         machine.execute(&Instruction::ClearScreen);
         assert_eq!(machine.counter, 512);
         assert_eq!(machine.stack_ptr, 0);
@@ -348,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_execute_ret() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
         // TODO: Should we artificially introduce modifications in the machine to test behaviour?
         // TODO: Perhaps a fixture-like ROM which is read before each test run.
         // Seems like it would be necessary otherwise a lot of behaviour can't be tested.
@@ -373,7 +524,7 @@ mod tests {
 
     #[test]
     fn test_execute_sys() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
         machine.execute(&Instruction::SYS);
         assert_eq!(machine.counter, 512);
         assert_eq!(machine.stack_ptr, 0);
@@ -392,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_execute_jump() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
 
@@ -418,7 +569,7 @@ mod tests {
 
     #[test]
     fn test_execute_call() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         assert_eq!(machine.stack_ptr, 0);
@@ -443,7 +594,7 @@ mod tests {
 
     #[test]
     fn test_execute_se() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.execute(&Instruction::SkipEqualsByte(machine.v[1], 0x0001)); // nothing should happen
@@ -465,7 +616,7 @@ mod tests {
 
     #[test]
     fn test_execute_sne() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.v[1] = 0x0001;
@@ -490,7 +641,7 @@ mod tests {
 
     #[test]
     fn test_execute_se_reg() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {});
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.v[1] = 0x0001;
@@ -516,5 +667,44 @@ mod tests {
         assert_eq!(machine.i, 0);
         assert_eq!(machine.delay_register, 0);
         assert_eq!(machine.sound_register, 0);
+    }
+
+    #[test]
+    fn test_execute_display_sprite() {
+        let _ = env_logger::init();
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+
+        // Set up the coordinate values (X, Y) in the V registers
+        machine.v[0x08] = 0x1c; // 29..36 (8-bit wide)
+        machine.v[0x09] = 0x16; // 22..28 (7-bit high)
+
+        // Fill the memory with lots of bits
+        for i in 0..3400 {
+            machine.mem.mem[i + 0x258] = 0xFF;
+        }
+
+        // VRAM is empty before the Display Instruction is executed
+        machine.i = 0x258;
+        for i in 0..32 {
+            for j in 0..64 {
+                assert_eq!(machine.graphics.mem[i][j], 0);
+            }
+        }
+
+        // Run the display instruction: D897 (Draw a sprite of 8x7 pixels, starting from (8, 9) on
+        // the GPU. The shape of the sprite is read from the memory, starting from location at register I.
+        // This is why before executing DXYN, we need to set the sprite in memory and point I to the location
+        // of the sprite.
+        machine.execute(&Instruction::DisplaySprite(0x8, 0x9, 7));
+
+        // Question: How do we know what the correct value of a sprite is?
+        // We use a simple sprite that just sets a rectangular block to 1
+        // and validate it.
+        // TODO: We also need to validate both X and Y overflow and the subsequent wraparound
+        for i in 22..28 {
+            for j in 29..36 {
+                assert_eq!(machine.graphics.mem[i][j], 1);
+            }
+        }
     }
 }

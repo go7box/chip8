@@ -7,6 +7,7 @@ pub struct OpcodeTableEntry {
     handler: fn(u16) -> Instruction,
 }
 
+#[deprecated()]
 const OPCODE_TABLE: [OpcodeTableEntry; 35] = [
     OpcodeTableEntry {
         opcode: 0x00E0,
@@ -188,6 +189,7 @@ const OPCODE_TABLE: [OpcodeTableEntry; 35] = [
 #[warn(dead_code)]
 pub struct OpcodeTable {}
 
+#[deprecated()]
 impl InstructionParser for OpcodeTable {
     fn try_from(&self, opcode: u16) -> Result<Instruction, String> {
         let ins: Instruction;
