@@ -18,7 +18,7 @@ const TIMER_FREQ: u64 = 60; // 60 Hz
 pub const DISPLAY_WIDTH: usize = 64;
 pub const DISPLAY_HEIGHT: usize = 32;
 
-struct Memory {
+pub struct Memory {
     mem: [u8; MEMORY_SIZE],
 }
 
@@ -93,9 +93,7 @@ where
             name: name.to_string(),
             counter: 512,
             stack_ptr: 0,
-            mem: Memory {
-                mem: [0; MEMORY_SIZE],
-            },
+            mem: Machine::<T>::init_memory(),
             graphics: GraphicsMemory {
                 mem: [[0; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
             },
@@ -118,6 +116,45 @@ where
             instruction_delay: Duration::from_millis(1_000 / CLOCK_SPEED),
             timer_delay: Duration::from_millis(1_000 / TIMER_FREQ),
         }
+    }
+
+    /*
+    Initializes zeroed memory,
+    loads fonts in their designated area.
+    */
+    pub fn init_memory() -> Memory {
+        let mut memory = [0; MEMORY_SIZE];
+        let fonts = Machine::<T>::get_fonts();
+        for i in 0..80 {
+            memory[i] = fonts[i];
+        }
+        Memory { mem: memory }
+    }
+
+    /*
+    These are the fonts on chip8.
+    Every font is an 8x5 pixel. They will be loaded into the
+    main memory
+    */
+    pub fn get_fonts() -> [u8; 80] {
+        [
+            0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+            0x20, 0x60, 0x20, 0x20, 0x70, // 1
+            0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+            0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+            0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+            0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+            0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+            0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+            0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+            0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+            0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+            0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+            0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+            0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+            0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+            0xF0, 0x80, 0xF0, 0x80, 0x80, // F
+        ]
     }
 
     pub fn load_rom(&mut self, filename: &str) -> Result<(), std::io::Error> {
@@ -421,6 +458,8 @@ where
 }
 
 use crate::display::VideoDisplay;
+use crate::opcodes::OpcodeMaskParser;
+use sdl2::Error;
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
 
@@ -435,7 +474,7 @@ mod tests {
         vm._copy_into_mem(&mut tmpfile).unwrap();
         assert_eq!(vm.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in vm.mem.mem.iter() {
+        for byte in vm.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
     }
@@ -486,7 +525,7 @@ mod tests {
 
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in machine.mem.mem.iter() {
+        for byte in machine.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
 
@@ -512,7 +551,7 @@ mod tests {
         assert_eq!(machine.skip_increment, true);
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in machine.mem.mem.iter() {
+        for byte in machine.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
         assert_eq!(machine.stack, [0; STACK_SIZE]);
@@ -531,7 +570,7 @@ mod tests {
         assert_eq!(machine.skip_increment, false);
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in machine.mem.mem.iter() {
+        for byte in machine.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
         assert_eq!(machine.stack, [0; STACK_SIZE]);
@@ -557,7 +596,7 @@ mod tests {
         assert_eq!(machine.skip_increment, true);
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in machine.mem.mem.iter() {
+        for byte in machine.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
         assert_eq!(machine.stack, [0; STACK_SIZE]);
@@ -583,7 +622,7 @@ mod tests {
 
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in machine.mem.mem.iter() {
+        for byte in machine.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
         assert_eq!(machine.v, [0; REGISTER_COUNT]);
@@ -606,7 +645,7 @@ mod tests {
 
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in machine.mem.mem.iter() {
+        for byte in machine.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
         assert_eq!(machine.i, 0);
@@ -631,7 +670,7 @@ mod tests {
 
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in machine.mem.mem.iter() {
+        for byte in machine.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
         assert_eq!(machine.i, 0);
@@ -661,7 +700,7 @@ mod tests {
 
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
-        for byte in machine.mem.mem.iter() {
+        for byte in machine.mem.mem[512..].iter() {
             assert_eq!(*byte, 0);
         }
         assert_eq!(machine.i, 0);
