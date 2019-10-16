@@ -2,11 +2,11 @@ extern crate sdl2;
 
 use std::collections::HashMap;
 
-pub struct Keyboard {
+pub struct KeyMap {
     pub keymap: HashMap<sdl2::keyboard::Keycode, usize>,
 }
 
-impl Keyboard {
+impl KeyMap {
     pub fn new() -> Self {
         let mut keys: HashMap<sdl2::keyboard::Keycode, usize> = HashMap::new();
         keys.insert(sdl2::keyboard::Keycode::Num1, 0x1 as usize);
@@ -24,6 +24,6 @@ impl Keyboard {
         keys.insert(sdl2::keyboard::Keycode::D, 0xD as usize);
         keys.insert(sdl2::keyboard::Keycode::E, 0xE as usize);
         keys.insert(sdl2::keyboard::Keycode::F, 0xF as usize);
-        Keyboard { keymap: keys }
+        KeyMap { keymap: keys }
     }
 }

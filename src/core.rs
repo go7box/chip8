@@ -8,6 +8,7 @@ use crate::instructions::{Instruction, InstructionParser};
 
 const MEMORY_SIZE: usize = 4096;
 const STACK_SIZE: usize = 16;
+const KEY_SIZE: usize = 16;
 const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
@@ -65,8 +66,9 @@ pub struct Machine<T: InstructionParser> {
     graphics: GraphicsMemory,
     sdl_context: Option<sdl2::Sdl>,
     display: Option<VideoDisplay>,
-    keyboard: Option<Keyboard>,
     stack: [u16; STACK_SIZE],
+    keymap: Option<KeyMap>,
+    keyboard: [bool; KEY_SIZE],
     keypad: [usize; KEYBOARD_SIZE],
     v: [u8; REGISTER_COUNT], // registers: v0 to vf
     i: u16,                  // "There is also a 16-bit register called I."
@@ -85,7 +87,7 @@ where
     T: InstructionParser,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {}, \n\tSKIP: {} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register, self.skip_increment)
+        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {}, \n\tSKIP: {}, \n\tKEYBOARD: {:?} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register, self.skip_increment, self.keyboard)
     }
 }
 
@@ -107,13 +109,14 @@ where
             },
             sdl_context,
             display: None,
-            keyboard: {
+            keymap: {
                 if headless {
                     None
                 } else {
-                    Some(Keyboard::new())
+                    Some(KeyMap::new())
                 }
             },
+            keyboard: [false; KEY_SIZE],
             stack: [0; STACK_SIZE],
             keypad: [0; KEYBOARD_SIZE],
             v: [0; REGISTER_COUNT],
@@ -377,21 +380,25 @@ where
                     d.draw(&self.graphics);
                 }
             }
-            //            Instruction::SkipKeyPress(reg) => {
-            //                if keyPressed == self.v[usize::from(reg)] && keyPressed == "down" {
-            //                    self.inc_pc();
-            //                }
-            //            }
-            //            Instruction::SkipNotKeyPress(reg) => {
-            //                if keyPressed == self.v[usize::from(reg)] && keyPressed == "up" {
-            //                    self.inc_pc();
-            //                }
-            //            }
-            //            Instruction::LoadKeyPress(reg) => {
-            //                let raw_input_key = get_input_key();        // get the input key from the keyboard
-            //                let key_pressed = keyMap[raw_input_key];    // modern -> chip8 keyboard translation
-            //                self.v[usize::from(reg)] = keyPressed;      // store in the register
-            //            }
+            Instruction::SkipKeyPress(reg) => {
+                let key = self.keyboard[self.v[usize::from(reg)] as usize];
+                if key {
+                    self.inc_pc();
+                }
+            }
+            Instruction::SkipNotKeyPress(reg) => {
+                let key = self.keyboard[self.v[usize::from(reg)] as usize];
+                if !key {
+                    self.inc_pc();
+                }
+            }
+            Instruction::LoadKeyPress(reg) => {
+                for key in self.keyboard.iter() {
+                    if *key {
+                        self.v[usize::from(reg)] = *key as u8; // store in the register
+                    }
+                }
+            }
             _ => unimplemented!(),
         };
         trace!("{:?}", self);
@@ -455,13 +462,11 @@ where
             match self.tick() {
                 Err(e) => return Err(e),
                 Ok(_) => {
-                    if let Some(d) = self.display.as_mut() {
-                        let k = self.keyboard.as_ref().unwrap();
-                        let sdl = self.sdl_context.as_ref().unwrap();
-                        if let Err(e) = Machine::<OpcodeMaskParser>::poll_events(sdl, k) {
+                    if !self.headless {
+                        if let Err(e) = self.poll_events() {
                             return Err(e);
                         } else {
-                            d.canvas.present();
+                            self.display.as_mut().unwrap().canvas.present();
                         }
                     }
                 }
@@ -479,20 +484,25 @@ where
         trace!("Instruction: {:X?}", instruction);
         self.execute(&instruction);
         self.handle_timers();
+        self.reset_keyboard();
         Ok(())
     }
 
+    pub fn reset_keyboard(&mut self) {
+        for key in self.keyboard.iter_mut() {
+            *key = false;
+        }
+    }
+
     // Poll for GUI events via the SDL context
-    pub fn poll_events(sdl_context: &sdl2::Sdl, keyboard: &Keyboard) -> Result<(), String> {
-        let mut pump = sdl_context.event_pump().unwrap();
+    pub fn poll_events(&mut self) -> Result<(), String> {
+        let mut pump = self.sdl_context.as_ref().unwrap().event_pump().unwrap();
         for event in pump.poll_iter() {
             match event {
                 sdl2::event::Event::Quit { .. } => {
                     return Err(String::from("Quit"));
                 }
-                _ => {
-                    debug!("Got event...");
-                }
+                _ => {}
             }
         }
         // ref: https://github.com/Rust-SDL2/rust-sdl2/blob/master/examples/keyboard-state.rs
@@ -501,30 +511,26 @@ where
             .pressed_scancodes()
             .filter_map(sdl2::keyboard::Keycode::from_scancode)
             .collect();
-        Machine::<OpcodeMaskParser>::handle_keys(&keys, keyboard);
+        self.handle_keys(&keys);
         Ok(())
     }
 
-    pub fn handle_keys(
-        keys: &Vec<sdl2::keyboard::Keycode>,
-        keyboard: &Keyboard,
-    ) -> Result<(), String> {
-        if keys.is_empty() {
-            Ok(())
-        } else {
+    pub fn handle_keys(&mut self, keys: &Vec<sdl2::keyboard::Keycode>) {
+        if !keys.is_empty() {
+            let ref mut keymap = self.keymap.as_mut().unwrap().keymap;
             for key in keys.iter() {
-                if keyboard.keymap.contains_key(key) {
-                    let chip8_key = keyboard.keymap.get(&key).unwrap();
+                if keymap.contains_key(key) {
+                    let chip8_key = keymap.get(&key).unwrap();
+                    self.keyboard[*chip8_key] = true; // store the activated key in the keyboard
                     debug!("Got a chip8 key = {:?}", chip8_key);
                 }
             }
-            Ok(())
         }
     }
 }
 
 use crate::display::VideoDisplay;
-use crate::keyboard::Keyboard;
+use crate::keyboard::KeyMap;
 use crate::opcodes::OpcodeMaskParser;
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
