@@ -9,6 +9,7 @@ pub struct KeyMap {
 impl KeyMap {
     pub fn new() -> Self {
         let mut keys: HashMap<sdl2::keyboard::Keycode, usize> = HashMap::new();
+        keys.insert(sdl2::keyboard::Keycode::Num0, 0x0 as usize);
         keys.insert(sdl2::keyboard::Keycode::Num1, 0x1 as usize);
         keys.insert(sdl2::keyboard::Keycode::Num2, 0x2 as usize);
         keys.insert(sdl2::keyboard::Keycode::Num3, 0x3 as usize);
