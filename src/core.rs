@@ -209,9 +209,8 @@ where
     fn execute(&mut self, ins: &Instruction) {
         match *ins {
             Instruction::ClearScreen => {
-                // TODO: Do we also require to "clear" the VRAM here or just the canvas?
                 if let Some(ref mut d) = self.display {
-                    d.clear();
+                    d.clear(&mut self.graphics);
                 }
             }
             Instruction::Return => {

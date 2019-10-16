@@ -90,7 +90,12 @@ impl VideoDisplay {
         canvas.present();
     }
 
-    pub fn clear(&mut self) {
+    pub fn clear(&mut self, graphics: &mut GraphicsMemory) {
         self.canvas.clear();
+        for i in 0..DISPLAY_HEIGHT {
+            for j in 0..DISPLAY_WIDTH {
+                graphics.mem[i][j] = 0;
+            }
+        }
     }
 }
