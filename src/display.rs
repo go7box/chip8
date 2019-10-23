@@ -3,7 +3,6 @@ extern crate sdl2;
 use self::sdl2::render::Canvas;
 use self::sdl2::video::Window;
 
-use self::sdl2::Sdl;
 use crate::core::{GraphicsMemory, DISPLAY_HEIGHT, DISPLAY_WIDTH};
 
 /**

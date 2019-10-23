@@ -4,7 +4,10 @@ use std::fs::File;
 use std::io::Read;
 use std::time::{Duration, Instant};
 
+use crate::audio::AudioDriver;
+use crate::display::VideoDisplay;
 use crate::instructions::{Instruction, InstructionParser};
+use crate::keyboard::KeyMap;
 
 const MEMORY_SIZE: usize = 4096;
 const STACK_SIZE: usize = 16;
@@ -15,7 +18,6 @@ const FLAG_REGISTER: usize = 15;
 const SPRITE_WIDTH: usize = 8;
 const CLOCK_SPEED: u64 = 500; // 500 Hz
 const TIMER_FREQ: u64 = 60; // 60 Hz
-const KEYBOARD_SIZE: usize = 16; // 0-9A-F on the keypad
 
 pub const DISPLAY_WIDTH: usize = 64;
 pub const DISPLAY_HEIGHT: usize = 32;
@@ -70,7 +72,6 @@ pub struct Machine<T: InstructionParser> {
     stack: [u16; STACK_SIZE],
     keymap: Option<KeyMap>,
     keyboard: [bool; KEY_SIZE],
-    keypad: [usize; KEYBOARD_SIZE],
     v: [u8; REGISTER_COUNT], // registers: v0 to vf
     i: u16,                  // "There is also a 16-bit register called I."
     delay_register: u8,
@@ -118,7 +119,6 @@ where
             },
             keyboard: [false; KEY_SIZE],
             stack: [0; STACK_SIZE],
-            keypad: [0; KEYBOARD_SIZE],
             v: [0; REGISTER_COUNT],
             i: 0,
             delay_register: 0,
@@ -164,9 +164,7 @@ where
     pub fn init_memory() -> Memory {
         let mut memory = [0; MEMORY_SIZE];
         let fonts = Machine::<T>::get_fonts();
-        for i in 0..80 {
-            memory[i] = fonts[i];
-        }
+        memory[..80].clone_from_slice(&fonts[..80]);
         Memory { mem: memory }
     }
 
@@ -458,12 +456,12 @@ where
                     }
                 }
             }
-            _ => unimplemented!(),
         };
         trace!("{:?}", self);
     }
 
     // Resets the machine back to the original state
+    #[cfg(test)]
     pub fn reset(&mut self) -> Result<(), String> {
         self.counter = 512;
         self.stack_ptr = 0;
@@ -581,11 +579,8 @@ where
     pub fn poll_events(&mut self) -> Result<(), String> {
         let mut pump = self.sdl_context.as_ref().unwrap().event_pump().unwrap();
         for event in pump.poll_iter() {
-            match event {
-                sdl2::event::Event::Quit { .. } => {
-                    return Err(String::from("Quit"));
-                }
-                _ => {}
+            if let sdl2::event::Event::Quit { .. } = event {
+                return Err(String::from("Quit"));
             }
         }
         // ref: https://github.com/Rust-SDL2/rust-sdl2/blob/master/examples/keyboard-state.rs
@@ -598,9 +593,9 @@ where
         Ok(())
     }
 
-    pub fn handle_keys(&mut self, keys: &Vec<sdl2::keyboard::Keycode>) {
+    pub fn handle_keys(&mut self, keys: &[sdl2::keyboard::Keycode]) {
         if !keys.is_empty() {
-            let ref mut keymap = self.keymap.as_mut().unwrap().keymap;
+            let keymap = &mut self.keymap.as_mut().unwrap().keymap;
             for key in keys.iter() {
                 if keymap.contains_key(key) {
                     let chip8_key = keymap.get(&key).unwrap();
@@ -612,14 +607,10 @@ where
     }
 }
 
-use crate::audio::AudioDriver;
-use crate::display::VideoDisplay;
-use crate::keyboard::KeyMap;
-use crate::opcodes::OpcodeMaskParser;
-use sdl2::Error;
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::opcodes::OpcodeMaskParser;
