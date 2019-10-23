@@ -66,6 +66,7 @@ pub struct Machine<T: InstructionParser> {
     graphics: GraphicsMemory,
     sdl_context: Option<sdl2::Sdl>,
     display: Option<VideoDisplay>,
+    audio: Option<AudioDriver>,
     stack: [u16; STACK_SIZE],
     keymap: Option<KeyMap>,
     keyboard: [bool; KEY_SIZE],
@@ -107,6 +108,7 @@ where
             },
             sdl_context,
             display: None,
+            audio: None,
             keymap: {
                 if headless {
                     None
@@ -129,6 +131,7 @@ where
             timer_delay: Duration::from_millis(1_000 / TIMER_FREQ),
         };
         machine.init_display();
+        machine.init_audio();
         machine
     }
 
@@ -139,6 +142,17 @@ where
             } else {
                 let sdl = self.sdl_context.as_ref().unwrap();
                 Some(VideoDisplay::new(sdl))
+            }
+        }
+    }
+
+    pub fn init_audio(&mut self) {
+        self.audio = {
+            if self.headless {
+                None
+            } else {
+                let sdl = self.sdl_context.as_ref().unwrap();
+                Some(AudioDriver::new(sdl))
             }
         }
     }
@@ -185,7 +199,7 @@ where
     pub fn load_rom(&mut self, filename: &str) -> Result<(), std::io::Error> {
         let mut file = File::open(filename)?;
         self._copy_into_mem(&mut file)?;
-        debug!("{:?}", self.mem);
+        trace!("{:?}", self.mem);
         Ok(())
     }
 
@@ -305,11 +319,13 @@ where
             }
             Instruction::SubNRegister(reg1, reg2) => {
                 self.v[0xf] = if reg2 > reg1 { 1 } else { 0 };
-                self.v[usize::from(reg1)] = self.v[usize::from(reg2)] - self.v[usize::from(reg1)];
+                self.v[usize::from(reg1)] =
+                    self.v[usize::from(reg2)].wrapping_sub(self.v[usize::from(reg1)]);
             }
             Instruction::SubRegister(reg1, reg2) => {
                 self.v[0xf] = if reg2 > reg1 { 0 } else { 1 };
-                self.v[usize::from(reg1)] -= self.v[usize::from(reg2)];
+                self.v[usize::from(reg1)] =
+                    self.v[usize::from(reg1)].wrapping_sub(self.v[usize::from(reg2)]);
             }
             Instruction::ShiftRight(reg) => {
                 self.v[0xf] = self.v[usize::from(reg)] & 0x1;
@@ -338,16 +354,16 @@ where
                 self.v[usize::from(register)] = self.delay_register;
             }
             Instruction::LoadDelay(register) => {
-                self.delay_register = register;
+                self.delay_register = self.v[usize::from(register)];
             }
             Instruction::LoadSound(register) => {
-                self.sound_register = register;
+                self.sound_register = self.v[usize::from(register)];
             }
             Instruction::AddI(register) => {
                 self.i = self.add_16(self.i, u16::from(self.v[usize::from(register)]));
             }
             Instruction::LoadFontSprite(register) => {
-                self.i = (self.v[usize::from(register)] * 5) as u16;
+                self.i = u16::from(self.v[usize::from(register)]) * 5;
             }
             Instruction::LoadIBCD(register) => {
                 // Store BCD representation of Vx in memory locations I, I+1 and I+2.
@@ -367,7 +383,7 @@ where
                 for n in 0..=register {
                     self.v[n] = self.mem.mem[usize::from(self.i) + n]
                 }
-                debug!("{:?}", self.mem);
+                trace!("{:?}", self.mem);
             }
             /*
             Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels
@@ -483,13 +499,26 @@ where
 
     fn handle_timers(&mut self) {
         let current_time = Instant::now();
-
+        let mut beep = false;
         if self.sound_register > 0 {
-            trace!("BEEEP!!!");
+            beep = true;
+            debug!("should beep...");
             if self.sound_last.elapsed() >= self.timer_delay {
+                debug!("sound time elapsed > timer frequency, decrementing sound timer");
                 self.sound_register -= 1;
                 self.sound_last = current_time;
             }
+        }
+
+        if !self.headless {
+            let audio_ref = self.audio.as_ref().unwrap();
+            if beep {
+                audio_ref.play()
+            } else {
+                audio_ref.stop()
+            }
+        } else {
+            debug!("BEEP!");
         }
 
         if self.delay_register > 0 && self.delay_last.elapsed() >= self.timer_delay {
@@ -565,13 +594,14 @@ where
                 if keymap.contains_key(key) {
                     let chip8_key = keymap.get(&key).unwrap();
                     self.keyboard[*chip8_key] = true; // store the activated key in the keyboard
-                    debug!("Got a chip8 key = {:?}", chip8_key);
+                    trace!("Got a chip8 key = {:?}", chip8_key);
                 }
             }
         }
     }
 }
 
+use crate::audio::AudioDriver;
 use crate::display::VideoDisplay;
 use crate::keyboard::KeyMap;
 use crate::opcodes::OpcodeMaskParser;
