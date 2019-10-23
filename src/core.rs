@@ -304,16 +304,21 @@ where
                     self.add(self.v[usize::from(reg1)], self.v[usize::from(reg2)]);
             }
             Instruction::SubNRegister(reg1, reg2) => {
-                unimplemented!("Need to understand bit twiddling here");
+                self.v[0xf] = if reg2 > reg1 { 1 } else { 0 };
+                self.v[usize::from(reg1)] =
+                    self.v[usize::from(reg2)] - self.v[usize::from(reg1)]
             }
             Instruction::SubRegister(reg1, reg2) => {
-                unimplemented!("Need to understand bit twiddling here");
+                self.v[0xf] = if reg2 > reg1 { 0 } else { 1 };
+                self.v[usize::from(reg1)] -= self.v[usize::from(reg2)];
             }
             Instruction::ShiftRight(reg) => {
-                unimplemented!("Need to understand bit twiddling here");
+                self.v[0xf] = self.v[usize::from(reg)] & 0x1;
+                self.v[usize::from(reg)] /= 2;
             }
             Instruction::ShiftLeft(reg) => {
-                unimplemented!("Need to understand bit twiddling here");
+                self.v[0xf] = (self.v[usize::from(reg)] & 0x80) >> 7;
+                self.v[usize::from(reg)] *= 2;
             }
             Instruction::SkipNotEqualRegister(reg1, reg2) => {
                 if self.v[usize::from(reg1)] != self.v[usize::from(reg2)] {
