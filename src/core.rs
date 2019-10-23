@@ -66,6 +66,7 @@ pub struct Machine<T: InstructionParser> {
     graphics: GraphicsMemory,
     sdl_context: Option<sdl2::Sdl>,
     display: Option<VideoDisplay>,
+    audio: Option<AudioDriver>,
     stack: [u16; STACK_SIZE],
     keymap: Option<KeyMap>,
     keyboard: [bool; KEY_SIZE],
@@ -107,6 +108,7 @@ where
             },
             sdl_context,
             display: None,
+            audio: None,
             keymap: {
                 if headless {
                     None
@@ -129,6 +131,7 @@ where
             timer_delay: Duration::from_millis(1_000 / TIMER_FREQ),
         };
         machine.init_display();
+        machine.init_audio();
         machine
     }
 
@@ -139,6 +142,17 @@ where
             } else {
                 let sdl = self.sdl_context.as_ref().unwrap();
                 Some(VideoDisplay::new(sdl))
+            }
+        }
+    }
+
+    pub fn init_audio(&mut self) {
+        self.audio = {
+            if self.headless {
+                None
+            } else {
+                let sdl = self.sdl_context.as_ref().unwrap();
+                Some(AudioDriver::new(sdl))
             }
         }
     }
@@ -347,7 +361,7 @@ where
                 self.i = self.add_16(self.i, u16::from(self.v[usize::from(register)]));
             }
             Instruction::LoadFontSprite(register) => {
-                self.i = (self.v[usize::from(register)] * 5) as u16;
+                self.i = u16::from(self.v[usize::from(register)]) * 5;
             }
             Instruction::LoadIBCD(register) => {
                 // Store BCD representation of Vx in memory locations I, I+1 and I+2.
@@ -483,13 +497,20 @@ where
 
     fn handle_timers(&mut self) {
         let current_time = Instant::now();
-
+        let mut beep = false;
         if self.sound_register > 0 {
-            trace!("BEEEP!!!");
+            beep = true;
             if self.sound_last.elapsed() >= self.timer_delay {
                 self.sound_register -= 1;
                 self.sound_last = current_time;
             }
+        }
+
+        let audio_ref = self.audio.as_ref().unwrap();
+        if beep {
+            audio_ref.play()
+        } else {
+            audio_ref.stop()
         }
 
         if self.delay_register > 0 && self.delay_last.elapsed() >= self.timer_delay {
@@ -572,6 +593,7 @@ where
     }
 }
 
+use crate::audio::AudioDriver;
 use crate::display::VideoDisplay;
 use crate::keyboard::KeyMap;
 use crate::opcodes::OpcodeMaskParser;

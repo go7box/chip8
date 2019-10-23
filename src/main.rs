@@ -7,6 +7,7 @@ extern crate lazy_static;
 
 use std::env;
 
+mod audio;
 mod bitmasks;
 mod core;
 mod display;
