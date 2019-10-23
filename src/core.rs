@@ -305,8 +305,7 @@ where
             }
             Instruction::SubNRegister(reg1, reg2) => {
                 self.v[0xf] = if reg2 > reg1 { 1 } else { 0 };
-                self.v[usize::from(reg1)] =
-                    self.v[usize::from(reg2)] - self.v[usize::from(reg1)]
+                self.v[usize::from(reg1)] = self.v[usize::from(reg2)] - self.v[usize::from(reg1)];
             }
             Instruction::SubRegister(reg1, reg2) => {
                 self.v[0xf] = if reg2 > reg1 { 0 } else { 1 };
