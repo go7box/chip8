@@ -410,7 +410,7 @@ where
                 2. "Each row of 8 pixels is read as bit-coded starting from memory location I"
                     - for this, we start at memory location I, and at each iteration,
                     we get the bytes in memory. For each byte, we ensure we are collecting the corresponding
-                    position's bit-value (by shifting bits and then grabbing the LSB). Unsure if this is correct.
+                    position's bit-value (by shifting bits and then grabbing the LSB).
 
                 3. "VF is set to 1 if any screen pixels are flipped from set to unset"
                     If a pixel was set already, and is now going to be unset, we set VF to 1.
