@@ -31,7 +31,7 @@ release:
 
 .PHONY: flight
 flight: fmt
-	RUST_LOG=trace cargo run roms/games/Space\ Flight.ch8
+	RUST_LOG=debug cargo run roms/games/Space\ Flight.ch8
 
 .PHONY: lint
 lint:
