@@ -89,7 +89,30 @@ where
     T: InstructionParser,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {}, \n\tSKIP: {}, \n\tKEYBOARD: {:?} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register, self.skip_increment, self.keyboard)
+        write!(
+            f,
+            "{} {{
+            \tPC: {},
+            \tSP: {},
+            \tStack: {:?},
+            \tRegisters: {:?},
+            \ti: {},
+            \tDR: {},
+            \tSR: {},
+            \tSKIP: {},
+            \tKEYBOARD: {:?}
+        }}",
+            self.name,
+            self.counter,
+            self.stack_ptr,
+            self.stack,
+            self.v,
+            self.i,
+            self.delay_register,
+            self.sound_register,
+            self.skip_increment,
+            self.keyboard
+        )
     }
 }
 
@@ -209,7 +232,6 @@ where
         let _ = file.read(&mut buffer)?;
 
         // Copy the buffer into the VM memory
-        // TODO: Why not copy directly without the intermediate buffer
         self.mem.mem[PROGRAM_OFFSET..].clone_from_slice(&buffer);
         Ok(())
     }
@@ -374,14 +396,12 @@ where
                 for n in 0..=register {
                     self.mem.mem[usize::from(self.i) + n] = self.v[n];
                 }
-                trace!("{:?}", self.mem);
             }
             Instruction::LoadRegisters(register) => {
                 let register: usize = usize::from(register);
                 for n in 0..=register {
                     self.v[n] = self.mem.mem[usize::from(self.i) + n]
                 }
-                trace!("{:?}", self.mem);
             }
             /*
             Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels
@@ -663,7 +683,6 @@ mod tests {
     fn test_execute_cls() {
         // The way we test execute is to pass in an instruction and then
         // inspect the entire state of the machine for changes.
-        // TODO: We might need a reset method to go back to the original state
         // Each instruction has a primary task and might also potentially have
         // some side-effect. We need to test both
         let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
@@ -687,8 +706,6 @@ mod tests {
     #[test]
     fn test_execute_ret() {
         let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
-        // TODO: Should we artificially introduce modifications in the machine to test behaviour?
-        // TODO: Perhaps a fixture-like ROM which is read before each test run.
         // Seems like it would be necessary otherwise a lot of behaviour can't be tested.
         // Modify the counter and the stack pointer before the machine execution starts
         machine.counter = 1;
@@ -929,23 +946,4 @@ mod tests {
         ]
         .iter()));
     }
-    //
-    //    #[test]
-    //    fn test_load_sound_produces_audio() {
-    //        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
-    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
-    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
-    //        machine.execute(&Instruction::LoadSound(machine.v[0x1]));
-    //        assert_eq!(machine.sound_register, 0x2);
-    //
-    //        // now lets add a few dummy instructions to make the CPU tick
-    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
-    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
-    //        ::std::thread::sleep(Duration::from_millis(1_000));
-    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
-    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
-    //
-    //        // after a few CPU cycles, the sound timer should be back to 0
-    //        assert_eq!(machine.sound_register, 0);
-    //    }
 }
