@@ -8,12 +8,14 @@ use crate::instructions::{Instruction, InstructionParser};
 
 const MEMORY_SIZE: usize = 4096;
 const STACK_SIZE: usize = 16;
+const KEY_SIZE: usize = 16;
 const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
 const SPRITE_WIDTH: usize = 8;
 const CLOCK_SPEED: u64 = 60; // 60 Hz
 const TIMER_FREQ: u64 = 60; // 60 Hz
+const KEYBOARD_SIZE: usize = 16; // 0-9A-F on the keypad
 
 pub const DISPLAY_WIDTH: usize = 64;
 pub const DISPLAY_HEIGHT: usize = 32;
@@ -57,12 +59,17 @@ impl fmt::Debug for GraphicsMemory {
 
 pub struct Machine<T: InstructionParser> {
     name: String,
+    headless: bool,
     counter: u16,
     stack_ptr: u8,
     mem: Memory,
     graphics: GraphicsMemory,
+    sdl_context: Option<sdl2::Sdl>,
     display: Option<VideoDisplay>,
     stack: [u16; STACK_SIZE],
+    keymap: Option<KeyMap>,
+    keyboard: [bool; KEY_SIZE],
+    keypad: [usize; KEYBOARD_SIZE],
     v: [u8; REGISTER_COUNT], // registers: v0 to vf
     i: u16,                  // "There is also a 16-bit register called I."
     delay_register: u8,
@@ -80,7 +87,7 @@ where
     T: InstructionParser,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {}, \n\tSKIP: {} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register, self.skip_increment)
+        write!(f, "{} {{ \n\tPC: {}, \n\tSP: {}, \n\tStack: {:?}, \n\tRegisters: {:?}, \n\ti: {}, \n\tDR: {}, \n\tSR: {}, \n\tSKIP: {}, \n\tKEYBOARD: {:?} }}", self.name, self.counter, self.stack_ptr, self.stack, self.v, self.i, self.delay_register, self.sound_register, self.skip_increment, self.keyboard)
     }
 }
 
@@ -88,9 +95,10 @@ impl<T> Machine<T>
 where
     T: InstructionParser,
 {
-    pub fn new(name: &str, ins_parser: T, headless: bool) -> Self {
-        Self {
+    pub fn new(name: &str, ins_parser: T, headless: bool, sdl_context: Option<sdl2::Sdl>) -> Self {
+        let mut machine = Self {
             name: name.to_string(),
+            headless,
             counter: 512,
             stack_ptr: 0,
             mem: Memory {
@@ -99,14 +107,18 @@ where
             graphics: GraphicsMemory {
                 mem: [[0; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
             },
-            display: {
+            sdl_context,
+            display: None,
+            keymap: {
                 if headless {
                     None
                 } else {
-                    Some(VideoDisplay::new())
+                    Some(KeyMap::new())
                 }
             },
+            keyboard: [false; KEY_SIZE],
             stack: [0; STACK_SIZE],
+            keypad: [0; KEYBOARD_SIZE],
             v: [0; REGISTER_COUNT],
             i: 0,
             delay_register: 0,
@@ -117,6 +129,19 @@ where
             skip_increment: false,
             instruction_delay: Duration::from_millis(1_000 / CLOCK_SPEED),
             timer_delay: Duration::from_millis(1_000 / TIMER_FREQ),
+        };
+        machine.init_display();
+        machine
+    }
+
+    pub fn init_display(&mut self) {
+        self.display = {
+            if self.headless {
+                None
+            } else {
+                let sdl = self.sdl_context.as_ref().unwrap();
+                Some(VideoDisplay::new(sdl))
+            }
         }
     }
 
@@ -183,7 +208,11 @@ where
 
     fn execute(&mut self, ins: &Instruction) {
         match *ins {
-            Instruction::ClearScreen => {}
+            Instruction::ClearScreen => {
+                if let Some(ref mut d) = self.display {
+                    d.clear(&mut self.graphics);
+                }
+            }
             Instruction::Return => {
                 self.counter = self.stack[usize::from(self.stack_ptr)];
                 self.stack_ptr -= 1;
@@ -237,8 +266,28 @@ where
                 self.v[usize::from(reg1)] =
                     self.add(self.v[usize::from(reg1)], self.v[usize::from(reg2)]);
             }
+            Instruction::SubNRegister(reg1, reg2) => {
+                unimplemented!("Need to understand bit twiddling here");
+            }
+            Instruction::SubRegister(reg1, reg2) => {
+                unimplemented!("Need to understand bit twiddling here");
+            }
+            Instruction::ShiftRight(reg) => {
+                unimplemented!("Need to understand bit twiddling here");
+            }
+            Instruction::ShiftLeft(reg) => {
+                unimplemented!("Need to understand bit twiddling here");
+            }
+            Instruction::SkipNotEqualRegister(reg1, reg2) => {
+                if self.v[usize::from(reg1)] != self.v[usize::from(reg2)] {
+                    self.inc_pc();
+                }
+            }
             Instruction::LoadImmediate(address) => {
                 self.i = address;
+            }
+            Instruction::JumpBase(reg) => {
+                self.counter = self.add_16(reg, u16::from(self.v[0x0]));
             }
             Instruction::Random(register, data) => {
                 let random_byte = rand::thread_rng().gen_range(0, 255);
@@ -330,6 +379,25 @@ where
                     d.draw(&self.graphics);
                 }
             }
+            Instruction::SkipKeyPress(reg) => {
+                let key = self.keyboard[self.v[usize::from(reg)] as usize];
+                if key {
+                    self.inc_pc();
+                }
+            }
+            Instruction::SkipNotKeyPress(reg) => {
+                let key = self.keyboard[self.v[usize::from(reg)] as usize];
+                if !key {
+                    self.inc_pc();
+                }
+            }
+            Instruction::LoadKeyPress(reg) => {
+                for key in self.keyboard.iter() {
+                    if *key {
+                        self.v[usize::from(reg)] = *key as u8; // store in the register
+                    }
+                }
+            }
             _ => unimplemented!(),
         };
         trace!("{:?}", self);
@@ -393,9 +461,11 @@ where
             match self.tick() {
                 Err(e) => return Err(e),
                 Ok(_) => {
-                    if let Some(ref mut d) = self.display {
-                        if let Err(e) = d.poll_events() {
+                    if !self.headless {
+                        if let Err(e) = self.poll_events() {
                             return Err(e);
+                        } else {
+                            self.display.as_mut().unwrap().canvas.present();
                         }
                     }
                 }
@@ -409,18 +479,58 @@ where
         if opcode != 0 {
             trace!("PC: {}, opcode = {:X}", self.counter, opcode);
         }
-
         let instruction = self.instruction_decode(opcode);
         trace!("Instruction: {:X?}", instruction);
-
         self.execute(&instruction);
-
         self.handle_timers();
+        self.reset_keyboard();
         Ok(())
+    }
+
+    pub fn reset_keyboard(&mut self) {
+        for key in self.keyboard.iter_mut() {
+            *key = false;
+        }
+    }
+
+    // Poll for GUI events via the SDL context
+    pub fn poll_events(&mut self) -> Result<(), String> {
+        let mut pump = self.sdl_context.as_ref().unwrap().event_pump().unwrap();
+        for event in pump.poll_iter() {
+            match event {
+                sdl2::event::Event::Quit { .. } => {
+                    return Err(String::from("Quit"));
+                }
+                _ => {}
+            }
+        }
+        // ref: https://github.com/Rust-SDL2/rust-sdl2/blob/master/examples/keyboard-state.rs
+        let keys: Vec<sdl2::keyboard::Keycode> = pump
+            .keyboard_state()
+            .pressed_scancodes()
+            .filter_map(sdl2::keyboard::Keycode::from_scancode)
+            .collect();
+        self.handle_keys(&keys);
+        Ok(())
+    }
+
+    pub fn handle_keys(&mut self, keys: &Vec<sdl2::keyboard::Keycode>) {
+        if !keys.is_empty() {
+            let ref mut keymap = self.keymap.as_mut().unwrap().keymap;
+            for key in keys.iter() {
+                if keymap.contains_key(key) {
+                    let chip8_key = keymap.get(&key).unwrap();
+                    self.keyboard[*chip8_key] = true; // store the activated key in the keyboard
+                    debug!("Got a chip8 key = {:?}", chip8_key);
+                }
+            }
+        }
     }
 }
 
 use crate::display::VideoDisplay;
+use crate::keyboard::KeyMap;
+use crate::opcodes::OpcodeMaskParser;
 #[cfg(test)]
 use std::io::{Seek, SeekFrom, Write};
 
@@ -431,7 +541,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_no_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
         vm._copy_into_mem(&mut tmpfile).unwrap();
         assert_eq!(vm.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
@@ -443,7 +553,7 @@ mod tests {
     #[test]
     fn test_copy_into_mem_some_data() {
         let mut tmpfile = tempfile::tempfile().unwrap();
-        let mut vm = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut vm = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
         write!(tmpfile, "Hello World!").unwrap(); // Write
         tmpfile.seek(SeekFrom::Start(0)).unwrap(); // Seek to start
         vm._copy_into_mem(&mut tmpfile).unwrap();
@@ -479,7 +589,7 @@ mod tests {
         // TODO: We might need a reset method to go back to the original state
         // Each instruction has a primary task and might also potentially have
         // some side-effect. We need to test both
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
         machine.execute(&Instruction::ClearScreen);
         assert_eq!(machine.counter, 512);
         assert_eq!(machine.stack_ptr, 0);
@@ -499,7 +609,7 @@ mod tests {
 
     #[test]
     fn test_execute_ret() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
         // TODO: Should we artificially introduce modifications in the machine to test behaviour?
         // TODO: Perhaps a fixture-like ROM which is read before each test run.
         // Seems like it would be necessary otherwise a lot of behaviour can't be tested.
@@ -524,7 +634,7 @@ mod tests {
 
     #[test]
     fn test_execute_sys() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
         machine.execute(&Instruction::SYS);
         assert_eq!(machine.counter, 512);
         assert_eq!(machine.stack_ptr, 0);
@@ -543,7 +653,7 @@ mod tests {
 
     #[test]
     fn test_execute_jump() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
 
@@ -569,7 +679,7 @@ mod tests {
 
     #[test]
     fn test_execute_call() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         assert_eq!(machine.stack_ptr, 0);
@@ -594,7 +704,7 @@ mod tests {
 
     #[test]
     fn test_execute_se() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.execute(&Instruction::SkipEqualsByte(machine.v[1], 0x0001)); // nothing should happen
@@ -616,7 +726,7 @@ mod tests {
 
     #[test]
     fn test_execute_sne() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.v[1] = 0x0001;
@@ -641,7 +751,7 @@ mod tests {
 
     #[test]
     fn test_execute_se_reg() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         machine.v[1] = 0x0001;
@@ -672,7 +782,7 @@ mod tests {
     #[test]
     fn test_execute_display_sprite() {
         let _ = env_logger::init();
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true);
+        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
 
         // Set up the coordinate values (X, Y) in the V registers
         machine.v[0x08] = 0x1c; // 29..36 (8-bit wide)
