@@ -13,7 +13,7 @@ const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
 const SPRITE_WIDTH: usize = 8;
-const CLOCK_SPEED: u64 = 60; // 60 Hz
+const CLOCK_SPEED: u64 = 500; // 500 Hz
 const TIMER_FREQ: u64 = 60; // 60 Hz
 const KEYBOARD_SIZE: usize = 16; // 0-9A-F on the keypad
 
@@ -265,8 +265,8 @@ where
                 }
             }
             Instruction::Return => {
-                self.counter = self.stack[usize::from(self.stack_ptr)];
                 self.stack_ptr -= 1;
+                self.counter = self.stack[usize::from(self.stack_ptr)];
                 self.skip_increment = true;
             }
             Instruction::SYS => {}
@@ -275,8 +275,8 @@ where
                 self.skip_increment = true;
             }
             Instruction::Call(address) => {
+                self.stack[usize::from(self.stack_ptr)] = self.counter + 2;
                 self.stack_ptr += 1;
-                self.stack[usize::from(self.stack_ptr)] = self.counter;
                 self.counter = address;
                 self.skip_increment = true;
             }
@@ -491,10 +491,11 @@ where
         Ok(Self::get_opcode(&self.mem.mem[pc..=pc + 1]))
     }
 
-    fn instruction_decode(&self, opcode: u16) -> Instruction {
-        self.instruction_parser
-            .try_from(opcode)
-            .expect("Could not parse opcode")
+    fn instruction_decode(&mut self, opcode: u16) -> Option<Instruction> {
+        match self.instruction_parser.try_from(opcode) {
+            Ok(x) => Some(x),
+            Err(_) => None,
+        }
     }
 
     fn handle_timers(&mut self) {
@@ -553,10 +554,20 @@ where
             trace!("PC: {}, opcode = {:X}", self.counter, opcode);
         }
         let instruction = self.instruction_decode(opcode);
-        trace!("Instruction: {:X?}", instruction);
-        self.execute(&instruction);
-        self.handle_timers();
-        self.reset_keyboard();
+        match instruction {
+            Some(i) => {
+                debug!("Opcode = {}, Instruction: {:X?}", opcode, i);
+                debug!("PC = {:X?}", self.counter);
+                debug!("Stack = {:X?}", self.stack);
+                self.execute(&i);
+                self.handle_timers();
+                self.reset_keyboard();
+            }
+            None => {
+                error!("Possible bad opcode : {}", opcode);
+                self.inc_pc()
+            }
+        }
         Ok(())
     }
 
@@ -594,7 +605,7 @@ where
                 if keymap.contains_key(key) {
                     let chip8_key = keymap.get(&key).unwrap();
                     self.keyboard[*chip8_key] = true; // store the activated key in the keyboard
-                    trace!("Got a chip8 key = {:?}", chip8_key);
+                    debug!("Got a chip8 key = {:?}", chip8_key);
                 }
             }
         }
@@ -764,7 +775,7 @@ mod tests {
         assert_eq!(machine.stack_ptr, 1); // increments the stack pointer
         assert_eq!(machine.counter, 0x0222); // pushes the current pc to the stack
         assert_eq!(machine.skip_increment, true); // we're gonna skip the next automatic pc increment
-        assert_eq!(machine.stack[usize::from(machine.stack_ptr)], 25); // stack has the old pc
+        assert_eq!(machine.stack[0], 27); // top of the stack has the (old pc + 2)
 
         assert_eq!(machine.mem.mem.len(), 4096);
         // every byte in memory is zero when file is empty
@@ -927,4 +938,23 @@ mod tests {
         ]
         .iter()));
     }
+    //
+    //    #[test]
+    //    fn test_load_sound_produces_audio() {
+    //        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
+    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
+    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
+    //        machine.execute(&Instruction::LoadSound(machine.v[0x1]));
+    //        assert_eq!(machine.sound_register, 0x2);
+    //
+    //        // now lets add a few dummy instructions to make the CPU tick
+    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
+    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
+    //        ::std::thread::sleep(Duration::from_millis(1_000));
+    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
+    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
+    //
+    //        // after a few CPU cycles, the sound timer should be back to 0
+    //        assert_eq!(machine.sound_register, 0);
+    //    }
 }

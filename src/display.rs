@@ -78,10 +78,10 @@ impl VideoDisplay {
                 let pixel = graphics.mem[i][j];
                 if pixel != 0 {
                     let canvas = &mut self.canvas;
-                    canvas.set_draw_color(*COLOR_BLUE);
+                    canvas.set_draw_color(*COLOR_RED);
                 } else {
                     let canvas = &mut self.canvas;
-                    canvas.set_draw_color(*COLOR_WHITE);
+                    canvas.set_draw_color(*COLOR_GREEN);
                 }
                 self.draw_pixel(i, j);
             }
