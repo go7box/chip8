@@ -13,7 +13,7 @@ const REGISTER_COUNT: usize = 16;
 const PROGRAM_OFFSET: usize = 512;
 const FLAG_REGISTER: usize = 15;
 const SPRITE_WIDTH: usize = 8;
-const CLOCK_SPEED: u64 = 60; // 60 Hz
+const CLOCK_SPEED: u64 = 500; // 500 Hz
 const TIMER_FREQ: u64 = 60; // 60 Hz
 const KEYBOARD_SIZE: usize = 16; // 0-9A-F on the keypad
 
@@ -927,4 +927,23 @@ mod tests {
         ]
         .iter()));
     }
+    //
+    //    #[test]
+    //    fn test_load_sound_produces_audio() {
+    //        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
+    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
+    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
+    //        machine.execute(&Instruction::LoadSound(machine.v[0x1]));
+    //        assert_eq!(machine.sound_register, 0x2);
+    //
+    //        // now lets add a few dummy instructions to make the CPU tick
+    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
+    //        machine.execute(&Instruction::LoadByte(machine.v[0x1], 0xF));
+    //        ::std::thread::sleep(Duration::from_millis(1_000));
+    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
+    //        machine.execute(&Instruction::LoadByte(machine.v[0xf], 0x2));
+    //
+    //        // after a few CPU cycles, the sound timer should be back to 0
+    //        assert_eq!(machine.sound_register, 0);
+    //    }
 }
