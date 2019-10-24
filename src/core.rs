@@ -827,7 +827,7 @@ mod tests {
         machine.execute(&Instruction::SkipNotEqualsByte(machine.v[1], 0x0001));
         assert_eq!(machine.counter, 512);
 
-        machine.reset();
+        machine.reset().unwrap();
         machine.v[1] = 0x0001;
 
         machine.execute(&Instruction::SkipNotEqualsByte(machine.v[1], 0x0002));
@@ -914,7 +914,7 @@ mod tests {
 
     #[test]
     fn test_font_sprites_loaded_on_machine_init() {
-        let mut machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
+        let machine = Machine::new("TestVM", OpcodeMaskParser {}, true, None);
 
         assert_eq!(machine.counter, 512); // before machine executes instruction
         assert_eq!(machine.mem.mem.len(), 4096);
