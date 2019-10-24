@@ -2,3 +2,4 @@
 
 This project is a Rust implementation of the Chip8 virtual machine.
 
+![Screenshot](./screenshot.png)
