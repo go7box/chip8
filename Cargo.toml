@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 log = "0.4.8"
 env_logger = "0.7.0"
-rand = "0.7.2"
+rand = "0.8.6"
 sdl2 = "0.32.2"
 gl = "0.10.0"
 lazy_static = "1"
